@@ -248,7 +248,7 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* 模块一：快速开始 */}
-      <Card className="mb-6" title={
+      {/* <Card className="mb-6" title={
         <div className="flex items-center space-x-2">
           <RiseOutlined className="text-blue-500" />
           <span>快速开始</span>
@@ -311,7 +311,7 @@ const Dashboard: React.FC = () => {
             )}
           />
         </div>
-      </Card>
+      </Card> */}
 
       {/* 模块二：我的工作区 */}
       <Card className="mb-6" title={
