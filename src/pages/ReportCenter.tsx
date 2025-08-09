@@ -122,10 +122,10 @@ const ReportCenter: React.FC<ReportCenterProps> = () => {
         ];
       case 'product':
           return [
-            { code: '11000003', name: '糖类抗原15-3(检测试剂) CA15-3', brand: '罗氏Roche', registrationNo: '国械注准20173400123', specification: '100测试/盒', model: 'CA15-3 Kit', itemNo: 'RO-CA153-100', value: 'ca15_3' },
-            { code: '11000005', name: '三碘甲状腺原氨酸测定试剂 T3', brand: '罗氏Roche', registrationNo: '国械注准20173400124', specification: '100测试/盒', model: 'T3 Kit', itemNo: 'RO-T3-100', value: 't3' },
-            { code: '11000006', name: '癌胚抗原测定试剂 CEA CalSet', brand: '罗氏Roche', registrationNo: '国械注准20173400125', specification: '100测试/盒', model: 'CEA Kit', itemNo: 'RO-CEA-100', value: 'cea' },
-            { code: '11000008', name: '糖类抗原19-9(检测试剂) CA19-9', brand: '罗氏Roche', registrationNo: '国械注准20173400126', specification: '100测试/盒', model: 'CA19-9 Kit', itemNo: 'RO-CA199-100', value: 'ca19_9' }
+            { code: '1001', name: '糖类抗原15-3(检测试剂) CA15-3', brand: '罗氏Roche', registrationNo: '国械注准20173400123', specification: '100测试/盒', model: 'CA15-3 Kit', itemNo: 'RO-CA153-100', value: 'ca15_3' },
+            { code: '1002', name: '三碘甲状腺原氨酸测定试剂 T3', brand: '罗氏Roche', registrationNo: '国械注准20173400124', specification: '100测试/盒', model: 'T3 Kit', itemNo: 'RO-T3-100', value: 't3' },
+            { code: '1003', name: '癌胚抗原测定试剂 CEA CalSet', brand: '罗氏Roche', registrationNo: '国械注准20173400125', specification: '100测试/盒', model: 'CEA Kit', itemNo: 'RO-CEA-100', value: 'cea' },
+            { code: '1004', name: '糖类抗原19-9(检测试剂) CA19-9', brand: '罗氏Roche', registrationNo: '国械注准20173400126', specification: '100测试/盒', model: 'CA19-9 Kit', itemNo: 'RO-CA199-100', value: 'ca19_9' }
           ];
       case 'brand':
         return [
@@ -176,90 +176,90 @@ const ReportCenter: React.FC<ReportCenterProps> = () => {
   // 模拟数据 - 基于文档中的医疗器械数据
   const mockData = [
     {
-      productCode: '11000003',
+      productCode: '1101',
       productName: '糖类抗原15-3(检测试剂) CA15-3',
       brand: '罗氏Roche',
       supplier: '罗氏Roche Diagnostics',
       managementOrg: '迪安诊断技术集团',
       procurementMode: '集中采购',
-      agreementPrice: 196.46,
+      agreementPrice: 191.23,
       taxRate: 13.0,
       diffRate: 0
     },
     {
-      productCode: '11000003',
+      productCode: '1102',
       productName: '糖类抗原15-3(检测试剂) CA15-3',
       brand: '罗氏Roche',
       supplier: '迪安诊断技术集团股份有限公司',
       managementOrg: '迪安诊断技术集团',
       procurementMode: '集中采购',
-      agreementPrice: 222.00,
+      agreementPrice: 198.23,
       taxRate: 13.0,
       diffRate: 13.00
     },
     {
-      productCode: '11000005',
+      productCode: '1003',
       productName: '三碘甲状腺原氨酸测定试剂 T3',
       brand: '罗氏Roche',
       supplier: '罗氏Roche Diagnostics',
       managementOrg: '迪安诊断技术集团',
       procurementMode: '自行采购',
-      agreementPrice: 227.43,
+      agreementPrice: 226.00,
       taxRate: 13.0,
       diffRate: 0
     },
     {
-      productCode: '11000006',
+      productCode: '1004',
       productName: '癌胚抗原测定试剂 CEA CalSet',
       brand: '罗氏Roche',
       supplier: '罗氏Roche Diagnostics',
       managementOrg: '迪安诊断技术集团',
       procurementMode: '集中采购',
-      agreementPrice: 98.23,
+      agreementPrice: 98.00,
       taxRate: 13.0,
       diffRate: 0
     },
     {
-      productCode: '11000006',
+      productCode: '1005',
       productName: '癌胚抗原测定试剂 CEA CalSet',
       brand: '罗氏Roche',
       supplier: '迪安诊断技术集团股份有限公司',
       managementOrg: '迪安诊断技术集团',
       procurementMode: '集中采购',
-      agreementPrice: 111.00,
+      agreementPrice: 133.00,
       taxRate: 13.0,
       diffRate: 13.00
     },
     {
-      productCode: '11000008',
+      productCode: '1006',
       productName: '糖类抗原19-9(检测试剂) CA19-9',
       brand: '罗氏Roche',
       supplier: '罗氏Roche Diagnostics',
       managementOrg: '迪安诊断技术集团',
       procurementMode: '自行采购',
-      agreementPrice: 149.56,
+      agreementPrice: 155.26,
       taxRate: 13.0,
       diffRate: 0
     },
     {
-      productCode: '11000012',
+      productCode: '1007',
       productName: '非小细胞肺癌相关抗原21-1',
       brand: '罗氏Roche',
       supplier: '罗氏Roche Diagnostics',
       managementOrg: '迪安诊断技术集团',
       procurementMode: '集中采购',
-      agreementPrice: 182.30,
+      agreementPrice: 199.18,
       taxRate: 13.0,
       diffRate: 0
     },
     {
-      productCode: '11000012',
+      productCode: '1008',
       productName: '非小细胞肺癌相关抗原21-1',
       brand: '罗氏Roche',
       supplier: '迪安诊断技术集团股份有限公司',
       managementOrg: '迪安诊断技术集团',
       procurementMode: '集中采购',
-      agreementPrice: 456.00,
+      agreementPrice: 567.00,
       taxRate: 13.0,
       diffRate: 150.1
     }
