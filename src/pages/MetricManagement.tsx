@@ -79,6 +79,7 @@ const MetricManagement: React.FC = () => {
   const [selectedMappings, setSelectedMappings] = useState<DatasetMapping[]>([]);
   const [isDatasetModalVisible, setIsDatasetModalVisible] = useState(false);
   const [mappingForm] = Form.useForm();
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
 
   // 模拟数据
   useEffect(() => {
@@ -1044,6 +1045,7 @@ const MetricManagement: React.FC = () => {
         }}
         onCancel={() => {
           setIsDatasetModalVisible(false);
+          setSelectedDatasetId('');
           mappingForm.resetFields();
         }}
         okText="添加"
@@ -1058,6 +1060,7 @@ const MetricManagement: React.FC = () => {
             <Select 
               placeholder="请选择数据集"
               onChange={(value) => {
+                setSelectedDatasetId(value);
                 mappingForm.setFieldsValue({ fieldName: undefined });
               }}
             >
@@ -1074,7 +1077,6 @@ const MetricManagement: React.FC = () => {
           >
             <Select placeholder="请选择字段">
               {(() => {
-                const selectedDatasetId = mappingForm.getFieldValue('datasetId');
                 const selectedDataset = datasets.find(ds => ds.id === selectedDatasetId);
                 return selectedDataset?.fields.map(field => (
                   <Option key={field.name} value={field.name}>
