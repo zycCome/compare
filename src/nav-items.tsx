@@ -23,6 +23,7 @@ import MetricManagement from "./pages/MetricManagement";
 import PriceModelManagement from "./pages/PriceModelManagement";
 import PriceModel2Management from "./pages/PriceModel2Management";
 import PriceSchemeManagement from "./pages/PriceSchemeManagement";
+import PriceScheme2Management from "./pages/PriceScheme2Management";
 import ReportCenter from "./pages/ReportCenter";
 
 export interface NavItem {
@@ -102,6 +103,12 @@ export const navItems: NavItem[] = [
     to: "/price-scheme",
     icon: <FileText className="h-4 w-4" />,
     component: PriceSchemeManagement,
+},
+{
+    title: "比价方案2",
+    to: "/price-scheme-2",
+    icon: <TrendingUp className="h-4 w-4" />,
+    component: PriceScheme2Management,
 },
 {
     title: "比价分析中心",
