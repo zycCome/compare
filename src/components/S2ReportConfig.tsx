@@ -1073,46 +1073,54 @@ export const S2ReportConfig: React.FC<S2ReportConfigProps> = ({
             {selectedDataset ? (
               <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 40px)' }}>
                 <Tabs
-                  defaultActiveKey="fields"
-                  size="small"
-                  style={{ flex: 1 }}
-                  tabBarStyle={{ marginBottom: '16px' }}
-                >
-                  <Tabs.TabPane tab="字段配置" key="fields">
-                    <div style={{ height: 'calc(100vh - 300px)' }}>
-                      <Text type="secondary" style={{ marginBottom: '16px', display: 'block' }}>
-                        拖拽或点击字段到对应区域进行配置
-                      </Text>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto', height: 'calc(100% - 40px)' }}>
-                        <ConfigArea
-                          title="行维度 (Rows)"
-                          fields={s2Fields.rows}
-                          area="rows"
-                          description="显示在表格左侧的维度字段，支持多层级"
-                        />
-                        <ConfigArea
-                          title="列维度 (Columns)"
-                          fields={s2Fields.columns}
-                          area="columns"
-                          description="显示在表格顶部的维度字段，支持多层级"
-                        />
-                        <ConfigArea
-                          title="值 (Values)"
-                          fields={s2Fields.values}
-                          area="values"
-                          description="显示在单元格中的度量字段，支持聚合计算"
-                        />
-                      </div>
-                    </div>
-                  </Tabs.TabPane>
-                  
-                  <Tabs.TabPane tab="筛选条件" key="filters">
-                    <div style={{ height: 'calc(100vh - 300px)', overflowY: 'auto' }}>
-                      <FilterList />
-                    </div>
-                  </Tabs.TabPane>
-                </Tabs>
+                    defaultActiveKey="fields"
+                    size="small"
+                    style={{ flex: 1 }}
+                    tabBarStyle={{ marginBottom: '16px' }}
+                    items={[
+                      {
+                        key: 'fields',
+                        label: '字段配置',
+                        children: (
+                          <div style={{ height: 'calc(100vh - 300px)' }}>
+                            <Text type="secondary" style={{ marginBottom: '16px', display: 'block' }}>
+                              拖拽或点击字段到对应区域进行配置
+                            </Text>
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto', height: 'calc(100% - 40px)' }}>
+                              <ConfigArea
+                                title="行维度 (Rows)"
+                                fields={s2Fields.rows}
+                                area="rows"
+                                description="显示在表格左侧的维度字段，支持多层级"
+                              />
+                              <ConfigArea
+                                title="列维度 (Columns)"
+                                fields={s2Fields.columns}
+                                area="columns"
+                                description="显示在表格顶部的维度字段，支持多层级"
+                              />
+                              <ConfigArea
+                                title="值 (Values)"
+                                fields={s2Fields.values}
+                                area="values"
+                                description="显示在单元格中的度量字段，支持聚合计算"
+                              />
+                            </div>
+                          </div>
+                        )
+                      },
+                      {
+                        key: 'filters',
+                        label: '筛选条件',
+                        children: (
+                          <div style={{ height: 'calc(100vh - 300px)', overflowY: 'auto' }}>
+                            <FilterList />
+                          </div>
+                        )
+                      }
+                    ]}
+                  />
               </div>
             ) : (
               <div style={{ 

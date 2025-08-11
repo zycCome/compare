@@ -5,7 +5,7 @@ import { Plus, Edit, Trash2 } from 'lucide-react';
 const { TextArea } = Input;
 const { Option } = Select;
 const { Title, Text } = Typography;
-const { TabPane } = Tabs;
+// const { TabPane } = Tabs; // 已废弃，使用items属性
 
 interface EnumValue {
   value: string;
@@ -199,129 +199,139 @@ const PriceFactorManagement: React.FC = () => {
           </Button>
         ]}
       >
-        <Tabs defaultActiveKey="basic">
-          <TabPane tab="基本信息" key="basic">
-            <Form layout="vertical" style={{ marginTop: '16px' }}>
-              <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  <Form.Item label="因子名称 *">
-                    <Input
-                      placeholder="请输入因子名称"
-                      value={formData.factorName}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, factorName: e.target.value })}
-                    />
-                  </Form.Item>
-                  <Form.Item label="因子编码 *">
-                    <Input
-                      placeholder="请输入因子编码"
-                      value={formData.factorCode}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, factorCode: e.target.value })}
-                    />
-                  </Form.Item>
-                </div>
-                
-                <Form.Item label="因子类型 *">
-                  <Select 
-                    value={formData.factorType} 
-                    onChange={(value: 'CONTROL' | 'SCORE') => setFormData({ ...formData, factorType: value })}
-                    placeholder="选择因子类型"
-                  >
-                    <Option value="CONTROL">CONTROL 控制型</Option>
-                    <Option value="SCORE">SCORE 评分型</Option>
-                  </Select>
-                </Form.Item>
-                
-                <Form.Item label="描述">
-                  <TextArea
-                    placeholder="请输入因子描述"
-                    value={formData.description}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, description: e.target.value })}
-                    rows={3}
-                  />
-                </Form.Item>
-              </Space>
-            </Form>
-          </TabPane>
-          
-          <TabPane tab="值域设置" key="values">
-            <Form layout="vertical" style={{ marginTop: '16px' }}>
-              <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                <Form.Item label="值类型 *">
-                  <Select 
-                    value={formData.valueType} 
-                    onChange={(value: any) => setFormData({ ...formData, valueType: value })}
-                    placeholder="选择值类型"
-                  >
-                    <Option value="ENUM">选项型（枚举）</Option>
-                    <Option value="MULTI_SELECT">多选型</Option>
-                    <Option value="RANGE">区间型</Option>
-                    <Option value="NUMERIC">数值型</Option>
-                  </Select>
-                </Form.Item>
-                
-                {formData.valueType === 'ENUM' && (
-                  <div>
-                    <Text strong>枚举值配置</Text>
+        <Tabs 
+          defaultActiveKey="basic"
+          items={[
+            {
+              key: 'basic',
+              label: '基本信息',
+              children: (
+                <Form layout="vertical" style={{ marginTop: '16px' }}>
+                  <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      <Form.Item label="因子名称 *">
+                        <Input
+                          placeholder="请输入因子名称"
+                          value={formData.factorName}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, factorName: e.target.value })}
+                        />
+                      </Form.Item>
+                      <Form.Item label="因子编码 *">
+                        <Input
+                          placeholder="请输入因子编码"
+                          value={formData.factorCode}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, factorCode: e.target.value })}
+                        />
+                      </Form.Item>
+                    </div>
                     
-                    {/* 添加新枚举值 */}
-                    <Card size="small" style={{ marginTop: '8px' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '8px', alignItems: 'end' }}>
-                        <Form.Item label="值 *" style={{ margin: 0 }}>
-                          <Input
-                            placeholder="枚举值"
-                            value={newEnumValue.value}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEnumValue({ ...newEnumValue, value: e.target.value })}
-                          />
-                        </Form.Item>
-                        <Form.Item label="标签 *" style={{ margin: 0 }}>
-                          <Input
-                            placeholder="显示标签"
-                            value={newEnumValue.label}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEnumValue({ ...newEnumValue, label: e.target.value })}
-                          />
-                        </Form.Item>
-                        <Form.Item label="描述" style={{ margin: 0 }}>
-                          <Input
-                            placeholder="描述信息"
-                            value={newEnumValue.description}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEnumValue({ ...newEnumValue, description: e.target.value })}
-                          />
-                        </Form.Item>
-                        <Button type="primary" icon={<Plus />} onClick={addEnumValue}>
-                          添加
-                        </Button>
-                      </div>
-                    </Card>
+                    <Form.Item label="因子类型 *">
+                      <Select 
+                        value={formData.factorType} 
+                        onChange={(value: 'CONTROL' | 'SCORE') => setFormData({ ...formData, factorType: value })}
+                        placeholder="选择因子类型"
+                      >
+                        <Option value="CONTROL">CONTROL 控制型</Option>
+                        <Option value="SCORE">SCORE 评分型</Option>
+                      </Select>
+                    </Form.Item>
                     
-                    {/* 枚举值列表 */}
-                    {formData.enumValues.length > 0 && (
-                      <Card size="small" style={{ marginTop: '16px' }}>
-                        <Text strong>已配置的枚举值</Text>
-                        <div style={{ marginTop: '8px' }}>
-                          {formData.enumValues.map((enumValue, index) => (
-                            <div key={index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', border: '1px solid #d9d9d9', borderRadius: '6px', marginBottom: '8px' }}>
-                              <div>
-                                <div style={{ fontWeight: 500 }}>{enumValue.label} ({enumValue.value})</div>
-                                {enumValue.description && (
-                                  <div style={{ fontSize: '12px', color: '#666' }}>{enumValue.description}</div>
-                                )}
-                              </div>
-                              <Button
-                                type="text"
-                                icon={<Trash2 size={16} />}
-                                onClick={() => removeEnumValue(index)}
+                    <Form.Item label="描述">
+                      <TextArea
+                        placeholder="请输入因子描述"
+                        value={formData.description}
+                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, description: e.target.value })}
+                        rows={3}
+                      />
+                    </Form.Item>
+                  </Space>
+                </Form>
+              )
+            },
+            {
+              key: 'values',
+              label: '值域设置',
+              children: (
+                <Form layout="vertical" style={{ marginTop: '16px' }}>
+                  <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                    <Form.Item label="值类型 *">
+                      <Select 
+                        value={formData.valueType} 
+                        onChange={(value: any) => setFormData({ ...formData, valueType: value })}
+                        placeholder="选择值类型"
+                      >
+                        <Option value="ENUM">选项型（枚举）</Option>
+                        <Option value="MULTI_SELECT">多选型</Option>
+                        <Option value="RANGE">区间型</Option>
+                        <Option value="NUMERIC">数值型</Option>
+                      </Select>
+                    </Form.Item>
+                    
+                    {formData.valueType === 'ENUM' && (
+                      <div>
+                        <Text strong>枚举值配置</Text>
+                        
+                        {/* 添加新枚举值 */}
+                        <Card size="small" style={{ marginTop: '8px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '8px', alignItems: 'end' }}>
+                            <Form.Item label="值 *" style={{ margin: 0 }}>
+                              <Input
+                                placeholder="枚举值"
+                                value={newEnumValue.value}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEnumValue({ ...newEnumValue, value: e.target.value })}
                               />
+                            </Form.Item>
+                            <Form.Item label="标签 *" style={{ margin: 0 }}>
+                              <Input
+                                placeholder="显示标签"
+                                value={newEnumValue.label}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEnumValue({ ...newEnumValue, label: e.target.value })}
+                              />
+                            </Form.Item>
+                            <Form.Item label="描述" style={{ margin: 0 }}>
+                              <Input
+                                placeholder="描述信息"
+                                value={newEnumValue.description}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEnumValue({ ...newEnumValue, description: e.target.value })}
+                              />
+                            </Form.Item>
+                            <Button type="primary" icon={<Plus />} onClick={addEnumValue}>
+                              添加
+                            </Button>
+                          </div>
+                        </Card>
+                        
+                        {/* 枚举值列表 */}
+                        {formData.enumValues.length > 0 && (
+                          <Card size="small" style={{ marginTop: '16px' }}>
+                            <Text strong>已配置的枚举值</Text>
+                            <div style={{ marginTop: '8px' }}>
+                              {formData.enumValues.map((enumValue, index) => (
+                                <div key={index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', border: '1px solid #d9d9d9', borderRadius: '6px', marginBottom: '8px' }}>
+                                  <div>
+                                    <div style={{ fontWeight: 500 }}>{enumValue.label} ({enumValue.value})</div>
+                                    {enumValue.description && (
+                                      <div style={{ fontSize: '12px', color: '#666' }}>{enumValue.description}</div>
+                                    )}
+                                  </div>
+                                  <Button
+                                    type="text"
+                                    icon={<Trash2 size={16} />}
+                                    onClick={() => removeEnumValue(index)}
+                                  />
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
-                      </Card>
+                          </Card>
+                        )}
+                      </div>
                     )}
-                  </div>
-                )}
-              </Space>
-            </Form>
-          </TabPane>
-        </Tabs>
+                  </Space>
+                </Form>
+              )
+            }
+          ]}
+        />
       </Modal>
 
       <Card title="因子列表" extra={<Text type="secondary">当前共有 {factors.length} 个比价因子</Text>}>

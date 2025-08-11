@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 
 const { Title, Text, Paragraph } = Typography;
-const { TabPane } = Tabs;
+// const { TabPane } = Tabs; // 已废弃，使用items属性
 
 interface RecentScheme {
   id: string;
@@ -320,95 +320,111 @@ const Dashboard: React.FC = () => {
           <span>我的工作区</span>
         </div>
       }>
-        <Tabs activeKey={activeTab} onChange={setActiveTab}>
-          <TabPane tab="常用报表模板" key="templates">
-            <Row gutter={[16, 16]}>
-              {reportTemplates.map((template) => (
-                <Col xs={24} sm={12} lg={6} key={template.id}>
-                  <Card
-                    size="small"
-                    hoverable
-                    actions={[
-                      <Button 
-                        type="primary" 
+        <Tabs 
+          activeKey={activeTab} 
+          onChange={setActiveTab}
+          items={[
+            {
+              key: 'templates',
+              label: '常用报表模板',
+              children: (
+                <Row gutter={[16, 16]}>
+                  {reportTemplates.map((template) => (
+                    <Col xs={24} sm={12} lg={6} key={template.id}>
+                      <Card
                         size="small"
-                        onClick={() => handleUseTemplate(template.id)}
+                        hoverable
+                        actions={[
+                          <Button 
+                            type="primary" 
+                            size="small"
+                            onClick={() => handleUseTemplate(template.id)}
+                          >
+                            开始分析
+                          </Button>,
+                          <Button 
+                            type="text" 
+                            size="small"
+                            icon={template.isStarred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />}
+                            onClick={() => handleToggleStar(template.id)}
+                          >
+                            {template.isStarred ? '已收藏' : '收藏'}
+                          </Button>
+                        ]}
                       >
-                        开始分析
-                      </Button>,
-                      <Button 
-                        type="text" 
+                        <Card.Meta
+                          title={
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium">{template.name}</span>
+                              {template.isStarred && <StarFilled style={{ color: '#faad14', fontSize: '12px' }} />}
+                            </div>
+                          }
+                          description={
+                            <div className="space-y-2">
+                              <Paragraph ellipsis={{ rows: 2 }} className="text-xs text-gray-600 mb-2">
+                                {template.description}
+                              </Paragraph>
+                              <div className="flex justify-between items-center">
+                                <Tag color="blue">{template.category}</Tag>
+                                <Text type="secondary" className="text-xs">使用 {template.usageCount} 次</Text>
+                              </div>
+                            </div>
+                          }
+                        />
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+              )
+            },
+            {
+              key: 'schemes',
+              label: '我的方案',
+              children: (
+                <div className="text-center py-8">
+                  <Text type="secondary">暂无个人方案</Text>
+                </div>
+              )
+            },
+            {
+              key: 'favorites',
+              label: '我的收藏',
+              children: (
+                <Row gutter={[16, 16]}>
+                  {reportTemplates.filter(t => t.isStarred).map((template) => (
+                    <Col xs={24} sm={12} lg={6} key={template.id}>
+                      <Card
                         size="small"
-                        icon={template.isStarred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />}
-                        onClick={() => handleToggleStar(template.id)}
+                        hoverable
+                        actions={[
+                          <Button 
+                            type="primary" 
+                            size="small"
+                            onClick={() => handleUseTemplate(template.id)}
+                          >
+                            开始分析
+                          </Button>
+                        ]}
                       >
-                        {template.isStarred ? '已收藏' : '收藏'}
-                      </Button>
-                    ]}
-                  >
-                    <Card.Meta
-                      title={
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">{template.name}</span>
-                          {template.isStarred && <StarFilled style={{ color: '#faad14', fontSize: '12px' }} />}
-                        </div>
-                      }
-                      description={
-                        <div className="space-y-2">
-                          <Paragraph ellipsis={{ rows: 2 }} className="text-xs text-gray-600 mb-2">
-                            {template.description}
-                          </Paragraph>
-                          <div className="flex justify-between items-center">
-                            <Tag color="blue">{template.category}</Tag>
-                            <Text type="secondary" className="text-xs">使用 {template.usageCount} 次</Text>
-                          </div>
-                        </div>
-                      }
-                    />
-                  </Card>
-                </Col>
-              ))}
-            </Row>
-          </TabPane>
-          <TabPane tab="我的方案" key="schemes">
-            <div className="text-center py-8">
-              <Text type="secondary">暂无个人方案</Text>
-            </div>
-          </TabPane>
-          <TabPane tab="我的收藏" key="favorites">
-            <Row gutter={[16, 16]}>
-              {reportTemplates.filter(t => t.isStarred).map((template) => (
-                <Col xs={24} sm={12} lg={6} key={template.id}>
-                  <Card
-                    size="small"
-                    hoverable
-                    actions={[
-                      <Button 
-                        type="primary" 
-                        size="small"
-                        onClick={() => handleUseTemplate(template.id)}
-                      >
-                        开始分析
-                      </Button>
-                    ]}
-                  >
-                    <Card.Meta
-                      title={<span className="text-sm font-medium">{template.name}</span>}
-                      description={
-                        <div className="space-y-2">
-                          <Paragraph ellipsis={{ rows: 2 }} className="text-xs text-gray-600 mb-2">
-                            {template.description}
-                          </Paragraph>
-                          <Tag color="blue">{template.category}</Tag>
-                        </div>
-                      }
-                    />
-                  </Card>
-                </Col>
-              ))}
-            </Row>
-          </TabPane>
-        </Tabs>
+                        <Card.Meta
+                          title={<span className="text-sm font-medium">{template.name}</span>}
+                          description={
+                            <div className="space-y-2">
+                              <Paragraph ellipsis={{ rows: 2 }} className="text-xs text-gray-600 mb-2">
+                                {template.description}
+                              </Paragraph>
+                              <Tag color="blue">{template.category}</Tag>
+                            </div>
+                          }
+                        />
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+              )
+            }
+          ]}
+        />
       </Card>
 
       <Row gutter={[16, 16]}>

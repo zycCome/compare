@@ -21,6 +21,7 @@ import MetricManagement from "./pages/MetricManagement";
 // import PriceCompareRule from "./pages/PriceCompareRule";
 // import ReportManagement from "./pages/ReportManagement";
 import PriceModelManagement from "./pages/PriceModelManagement";
+import PriceModel2Management from "./pages/PriceModel2Management";
 import PriceSchemeManagement from "./pages/PriceSchemeManagement";
 import ReportCenter from "./pages/ReportCenter";
 
@@ -89,6 +90,12 @@ export const navItems: NavItem[] = [
     to: "/price-model",
     icon: <Settings className="h-4 w-4" />,
     component: PriceModelManagement,
+},
+{
+    title: "比价模型2",
+    to: "/price-model-2",
+    icon: <Calculator className="h-4 w-4" />,
+    component: PriceModel2Management,
 },
 {
     title: "比价方案",
