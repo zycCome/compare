@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Table, Modal, Form, Input, Select, Space, message, Popconfirm, Tag, Steps, Radio, Checkbox, Divider, Typography, Alert, DatePicker, Upload, Row, Col, Tooltip } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, SaveOutlined, SendOutlined, UploadOutlined, InfoCircleOutlined, CopyOutlined, PlayCircleOutlined, FileTextOutlined, DownloadOutlined, SettingOutlined } from '@ant-design/icons';
-// import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { Card, Button, Table, Modal, Form, Input, Select, Space, message, Popconfirm, Tag, Steps, Radio, Checkbox, Divider, Typography, Alert, DatePicker, Upload, Row, Col, Tooltip, InputNumber, TreeSelect, Transfer } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, SaveOutlined, SendOutlined, UploadOutlined, InfoCircleOutlined, CopyOutlined, PlayCircleOutlined, FileTextOutlined, DownloadOutlined, SettingOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
 const { Option } = Select;
@@ -31,9 +30,15 @@ interface ComparisonScheme {
     };
     vendor?: string[];
     timeRange: [string, string];
-    extra?: any;
+    extraFilters: FilterCondition[];
   };
-  baselines: BaselineBlock[];
+  compareIndicator: {
+    id: string;
+    name: string;
+    datasetAlias: string;
+  };
+  baselines: BaselineConfig[];
+  computedIndicators: ComputedIndicator[];
   ruleSetRef?: {
     id: string;
     name: string;
@@ -44,34 +49,40 @@ interface ComparisonScheme {
       field: string;
       order: 'asc' | 'desc';
     }[];
-    export: {
-      excel: boolean;
-      csv: boolean;
-      api: boolean;
-    };
+    styleRules: StyleRule[];
+    export: string[];
   };
-  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  status: 'DRAFT' | 'SAVED' | 'PREVIEW' | 'ENABLED';
   createdBy: string;
   createdAt: string;
   updatedAt: string;
 }
 
-interface BaselineBlock {
+interface BaselineConfig {
+  alias: string;
+  datasetAlias: string;
+  indicatorLibId: string;
+  name: string;
+  conditions: string[];
+}
+
+interface ComputedIndicator {
   id: string;
-  label: string;
-  participantIndicatorId: string;
-  datasetId: string;
-  indicatorId: string;
-  bindPlaceholders: { [key: string]: string };
-  alignMode: {
-    mode: 'inherit' | 'custom';
-    dimensions?: string[];
-  };
-  filters?: any;
-  resultAlias: {
-    baselineColumn: string;
-    diffRateColumn: string;
-  };
+  name: string;
+  formula: string;
+  bindBaselineAlias: string;
+  unit: string;
+}
+
+interface FilterCondition {
+  field: string;
+  op: 'IN' | 'LIKE' | 'BETWEEN' | '=' | '>' | '<';
+  value: any;
+}
+
+interface StyleRule {
+  expr: string;
+  style: { color?: string; backgroundColor?: string };
 }
 
 interface ComparisonModel {
@@ -81,8 +92,9 @@ interface ComparisonModel {
   compareKeys: string[];
   analysisObject: string;
   dimensions: string[];
-  indicators: string[];
+  analysisIndicators: string[];
   baselineCandidates: any[];
+  displayAttributes: string[];
   defaultOutput: string[];
 }
 
@@ -92,7 +104,7 @@ const PriceScheme2Management: React.FC = () => {
   const [editingScheme, setEditingScheme] = useState<ComparisonScheme | null>(null);
   const [form] = Form.useForm();
   const [currentStep, setCurrentStep] = useState(0);
-  const [baselines, setBaselines] = useState<BaselineBlock[]>([]);
+  const [baselines, setBaselines] = useState<BaselineConfig[]>([]);
   const [outputColumns, setOutputColumns] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<ComparisonModel | null>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -107,11 +119,12 @@ const PriceScheme2Management: React.FC = () => {
       compareKeys: ['item_id', 'brand'],
       analysisObject: '供应商',
       dimensions: ['供应商', '组织', '时间(月)'],
-      indicators: ['ind_agreement_price', 'ind_discount_rate'],
+      analysisIndicators: ['ind_agreement_price', 'ind_discount_rate'],
       baselineCandidates: [
         { datasetId: 'ds_bid', indicators: ['ind_bid_min'] },
         { datasetId: 'ds_po_hist', indicators: ['ind_hist_min'] }
       ],
+      displayAttributes: ['供应商', '组织', '产品'],
       defaultOutput: ['供应商', '协议价', '${BASELINE}', '差异率']
     }
   ];
@@ -178,27 +191,37 @@ const PriceScheme2Management: React.FC = () => {
             category: 'cat_ivd',
             brand: 'brand_roche'
           },
-          timeRange: ['2024-01-01', '2024-03-31']
+          timeRange: ['2024-01-01', '2024-03-31'],
+          extraFilters: []
+        },
+        compareIndicator: {
+          id: 'ind_agreement_price',
+          name: '协议价',
+          datasetAlias: 'ds_agreement_price'
         },
         baselines: [
           {
-            id: 'baseline_1',
-            label: '基准块 #1',
-            participantIndicatorId: 'ind_agreement_price',
-            datasetId: 'ds_bid',
-            indicatorId: 'ind_bid_min',
-            bindPlaceholders: { '${BASELINE}': 'ind_bid_min' },
-            alignMode: { mode: 'inherit' },
-            resultAlias: {
-              baselineColumn: 'baseline_price_A',
-              diffRateColumn: 'diff_rate_A'
-            }
+            alias: 'baseline_1',
+            datasetAlias: 'ds_bid',
+            indicatorLibId: 'ind_bid_min',
+            name: '招采最低价',
+            conditions: ['same_product', 'same_vendor']
+          }
+        ],
+        computedIndicators: [
+          {
+            id: 'diff_rate_A',
+            name: '差异率A',
+            formula: '(协议价 - 招采最低价) / 招采最低价',
+            bindBaselineAlias: 'baseline_1',
+            unit: '%'
           }
         ],
         output: {
           columns: ['供应商', '采购组织', '协议价', 'baseline_price_A', 'diff_rate_A'],
           orderBy: [{ field: 'diff_rate_A', order: 'desc' }],
-          export: { excel: true, csv: false, api: false }
+          styleRules: [],
+          export: ['excel']
         },
         status: 'DRAFT',
         createdBy: 'admin',
@@ -209,13 +232,13 @@ const PriceScheme2Management: React.FC = () => {
   }, []);
 
   const steps = [
-    { title: '基本信息', description: '方案名称、编码等基础信息' },
-    { title: '绑定比价模型', description: '选择比价模型并查看摘要' },
-    { title: '执行范围', description: '设置WHERE条件和过滤范围' },
-    { title: '多基准设置', description: '配置基准块和对齐策略' },
-    { title: '规则集', description: '绑定控制和评分规则' },
-    { title: '输出与排序', description: '配置输出列和排序方式' },
-    { title: '预览与执行', description: '生成SQL并预览结果' }
+    { title: '基本信息', description: '方案名称、编码、标签等' },
+    { title: '绑定比价模型', description: '选择比价模型' },
+    { title: '查询范围', description: '组织、产品、供应商、时间范围' },
+    { title: '基准选择', description: '配置基准块' },
+    { title: '计算指标', description: '配置计算指标' },
+    { title: '规则与输出', description: '规则集、输出列、排序' },
+    { title: '预览与执行', description: '预览结果、保存执行' }
   ];
 
   const handleCreate = () => {
@@ -235,24 +258,24 @@ const PriceScheme2Management: React.FC = () => {
     setOutputColumns(scheme.output.columns);
     setSelectedModel(mockModels.find(m => m.id === scheme.modelRef.id) || null);
     form.setFieldsValue({
-      schemeName: scheme.schemeName,
-      schemeCode: scheme.schemeCode,
-      tags: scheme.tags,
-      description: scheme.description,
-      enabled: scheme.enabled,
-      modelId: scheme.modelRef.id,
-      orgScope: scheme.scope.org,
-      productCategory: scheme.scope.product.category,
-      productBrand: scheme.scope.product.brand,
-      vendorScope: scheme.scope.vendor,
-      timeRange: [dayjs(scheme.scope.timeRange[0]), dayjs(scheme.scope.timeRange[1])],
-      ruleSetId: scheme.ruleSetRef?.id,
-      orderBy: scheme.output.orderBy[0]?.field,
-      orderDirection: scheme.output.orderBy[0]?.order,
-      exportExcel: scheme.output.export.excel,
-      exportCsv: scheme.output.export.csv,
-      exportApi: scheme.output.export.api
-    });
+        schemeName: scheme.schemeName,
+        schemeCode: scheme.schemeCode,
+        tags: scheme.tags,
+        description: scheme.description,
+        enabled: scheme.enabled,
+        modelId: scheme.modelRef.id,
+        orgScope: scheme.scope.org,
+        productCategory: scheme.scope.product.category,
+        productBrand: scheme.scope.product.brand,
+        vendorScope: scheme.scope.vendor,
+        timeRange: [dayjs(scheme.scope.timeRange[0]), dayjs(scheme.scope.timeRange[1])],
+        ruleSetId: scheme.ruleSetRef?.id,
+        orderBy: scheme.output.orderBy[0]?.field,
+        orderDirection: scheme.output.orderBy[0]?.order,
+        exportExcel: scheme.output.export.includes('excel'),
+        exportCsv: scheme.output.export.includes('csv'),
+        exportApi: scheme.output.export.includes('api')
+      });
     setIsModalVisible(true);
   };
 
@@ -270,23 +293,17 @@ const PriceScheme2Management: React.FC = () => {
   };
 
   const addBaselineBlock = () => {
-    const newBaseline: BaselineBlock = {
-      id: `baseline_${Date.now()}`,
-      label: `基准块 #${baselines.length + 1}`,
-      participantIndicatorId: '',
-      datasetId: '',
-      indicatorId: '',
-      bindPlaceholders: {},
-      alignMode: { mode: 'inherit' },
-      resultAlias: {
-        baselineColumn: `baseline_price_${String.fromCharCode(65 + baselines.length)}`,
-        diffRateColumn: `diff_rate_${String.fromCharCode(65 + baselines.length)}`
-      }
+    const newBaseline: BaselineConfig = {
+      alias: `baseline_${Date.now()}`,
+      datasetAlias: '',
+      indicatorLibId: '',
+      name: `基准块 #${baselines.length + 1}`,
+      conditions: []
     };
     setBaselines([...baselines, newBaseline]);
   };
 
-  const updateBaselineBlock = (index: number, updates: Partial<BaselineBlock>) => {
+  const updateBaselineBlock = (index: number, updates: Partial<BaselineConfig>) => {
     const newBaselines = [...baselines];
     newBaselines[index] = { ...newBaselines[index], ...updates };
     setBaselines(newBaselines);
@@ -298,14 +315,10 @@ const PriceScheme2Management: React.FC = () => {
 
   const copyBaselineBlock = (index: number) => {
     const original = baselines[index];
-    const copy: BaselineBlock = {
+    const copy: BaselineConfig = {
       ...original,
-      id: `baseline_${Date.now()}`,
-      label: `${original.label} (副本)`,
-      resultAlias: {
-        baselineColumn: `${original.resultAlias.baselineColumn}_copy`,
-        diffRateColumn: `${original.resultAlias.diffRateColumn}_copy`
-      }
+      alias: `baseline_${Date.now()}`,
+      name: `${original.name} (副本)`
     };
     setBaselines([...baselines, copy]);
   };
@@ -391,9 +404,16 @@ LIMIT 1000;`;
             skuList: []
           },
           vendor: values.vendorScope,
-          timeRange: [values.timeRange[0].format('YYYY-MM-DD'), values.timeRange[1].format('YYYY-MM-DD')]
+          timeRange: [values.timeRange[0].format('YYYY-MM-DD'), values.timeRange[1].format('YYYY-MM-DD')],
+          extraFilters: []
+        },
+        compareIndicator: {
+          id: 'ind_agreement_price',
+          name: '协议价',
+          datasetAlias: 'ds_agreement_price'
         },
         baselines,
+        computedIndicators: [],
         ruleSetRef: values.ruleSetId ? {
           id: values.ruleSetId,
           name: mockRuleSets.find(r => r.id === values.ruleSetId)?.name || ''
@@ -404,11 +424,12 @@ LIMIT 1000;`;
             field: values.orderBy,
             order: values.orderDirection || 'desc'
           }] : [],
-          export: {
-            excel: values.exportExcel || false,
-            csv: values.exportCsv || false,
-            api: values.exportApi || false
-          }
+          styleRules: [],
+          export: [
+            ...(values.exportExcel ? ['excel'] : []),
+            ...(values.exportCsv ? ['csv'] : []),
+            ...(values.exportApi ? ['api'] : [])
+          ]
         },
         status: 'DRAFT',
         createdBy: 'admin',
@@ -592,7 +613,7 @@ LIMIT 1000;`;
                   <div>• compare keys: {selectedModel.compareKeys.join(', ')}</div>
                   <div>• 分析对象: {selectedModel.analysisObject}</div>
                   <div>• 维度: {selectedModel.dimensions.join('/')}</div>
-                  <div>• 可用/原子指标: {selectedModel.indicators.join(', ')}</div>
+                  <div>• 可用/原子指标: {selectedModel.analysisIndicators.join(', ')}</div>
                   <div>• 可用基准候选: {selectedModel.baselineCandidates.map(bc => `${bc.datasetId}[${bc.indicators.join(',')}]`).join(', ')}</div>
                   <div>• 默认输出: {selectedModel.defaultOutput.join(', ')}</div>
                 </div>
@@ -656,6 +677,12 @@ LIMIT 1000;`;
       case 3: // 多基准设置
         return (
           <div className="space-y-4">
+            <Alert
+              message="配置比价基准，每个基准代表一个对比维度，支持多基准并列比较。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
             <div className="flex justify-between items-center">
               <Title level={5}>基准块配置</Title>
               <Button type="primary" icon={<PlusOutlined />} onClick={addBaselineBlock}>
@@ -664,8 +691,8 @@ LIMIT 1000;`;
             </div>
             {baselines.map((baseline, index) => (
               <Card
-                key={baseline.id}
-                title={baseline.label}
+                key={baseline.alias}
+                title={`基准 ${index + 1}: ${baseline.name || '未命名'}`}
                 size="small"
                 extra={
                   <Space>
@@ -677,27 +704,36 @@ LIMIT 1000;`;
                 <Row gutter={16}>
                   <Col span={12}>
                     <div className="mb-2">
-                      <Text strong>参与侧指标 *</Text>
-                      <Select
-                        style={{ width: '100%', marginTop: 4 }}
-                        placeholder="请选择参与侧指标"
-                        value={baseline.participantIndicatorId}
-                        onChange={(value) => updateBaselineBlock(index, { participantIndicatorId: value })}
-                      >
-                        {mockIndicators.map(ind => (
-                          <Option key={ind.id} value={ind.id}>{ind.name}</Option>
-                        ))}
-                      </Select>
+                      <Text strong>基准名称 *</Text>
+                      <Input
+                        style={{ marginTop: 4 }}
+                        placeholder="请输入基准名称"
+                        value={baseline.name}
+                        onChange={(e) => updateBaselineBlock(index, { name: e.target.value })}
+                      />
                     </div>
                   </Col>
+                  <Col span={12}>
+                    <div className="mb-2">
+                      <Text strong>基准别名 *</Text>
+                      <Input
+                        style={{ marginTop: 4 }}
+                        placeholder="请输入基准别名"
+                        value={baseline.alias}
+                        onChange={(e) => updateBaselineBlock(index, { alias: e.target.value })}
+                      />
+                    </div>
+                  </Col>
+                </Row>
+                <Row gutter={16}>
                   <Col span={12}>
                     <div className="mb-2">
                       <Text strong>基准数据集 *</Text>
                       <Select
                         style={{ width: '100%', marginTop: 4 }}
                         placeholder="请选择基准数据集"
-                        value={baseline.datasetId}
-                        onChange={(value) => updateBaselineBlock(index, { datasetId: value })}
+                        value={baseline.datasetAlias}
+                        onChange={(value) => updateBaselineBlock(index, { datasetAlias: value })}
                       >
                         {mockDatasets.map(ds => (
                           <Option key={ds.id} value={ds.id}>{ds.name}</Option>
@@ -705,16 +741,14 @@ LIMIT 1000;`;
                       </Select>
                     </div>
                   </Col>
-                </Row>
-                <Row gutter={16}>
                   <Col span={12}>
                     <div className="mb-2">
                       <Text strong>基准指标 *</Text>
                       <Select
                         style={{ width: '100%', marginTop: 4 }}
                         placeholder="请选择基准指标"
-                        value={baseline.indicatorId}
-                        onChange={(value) => updateBaselineBlock(index, { indicatorId: value })}
+                        value={baseline.indicatorLibId}
+                        onChange={(value) => updateBaselineBlock(index, { indicatorLibId: value })}
                       >
                         {mockIndicators.map(ind => (
                           <Option key={ind.id} value={ind.id}>{ind.name}</Option>
@@ -722,78 +756,79 @@ LIMIT 1000;`;
                       </Select>
                     </div>
                   </Col>
-                  <Col span={12}>
-                    <div className="mb-2">
-                      <Text strong>占位符绑定</Text>
-                      <Input
-                        style={{ marginTop: 4 }}
-                        placeholder="${BASELINE} ← 基准指标"
-                        value={`\${BASELINE} ← ${baseline.indicatorId}`}
-                        disabled
-                      />
-                    </div>
-                  </Col>
                 </Row>
                 <div className="mb-2">
                   <Text strong>对齐维度策略</Text>
-                  <Radio.Group
-                    style={{ marginTop: 4 }}
-                    value={baseline.alignMode.mode}
-                    onChange={(e) => updateBaselineBlock(index, { alignMode: { mode: e.target.value } })}
+                  <Select
+                    mode="multiple"
+                    style={{ width: '100%', marginTop: 4 }}
+                    placeholder="请选择条件"
+                    value={baseline.conditions}
+                    onChange={(value) => updateBaselineBlock(index, { conditions: value })}
                   >
-                    <Radio value="inherit">继承模型</Radio>
-                    <Radio value="custom">自定义</Radio>
-                  </Radio.Group>
-                  {baseline.alignMode.mode === 'custom' && (
-                    <Select
-                      mode="multiple"
-                      style={{ width: '100%', marginTop: 8 }}
-                      placeholder="请选择自定义维度"
-                      value={baseline.alignMode.dimensions}
-                      onChange={(value) => updateBaselineBlock(index, { alignMode: { mode: 'custom', dimensions: value } })}
-                    >
-                      <Option value="组织">组织</Option>
-                      <Option value="月份">月份</Option>
-                      <Option value="地区">地区</Option>
-                    </Select>
-                  )}
+                    <Option value="same_product">相同产品</Option>
+                    <Option value="same_vendor">相同供应商</Option>
+                    <Option value="same_org">相同组织</Option>
+                  </Select>
                 </div>
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <div className="mb-2">
-                      <Text strong>基准列名</Text>
-                      <Input
-                        style={{ marginTop: 4 }}
-                        placeholder="基准列名"
-                        value={baseline.resultAlias.baselineColumn}
-                        onChange={(e) => updateBaselineBlock(index, {
-                          resultAlias: { ...baseline.resultAlias, baselineColumn: e.target.value }
-                        })}
-                      />
-                    </div>
-                  </Col>
-                  <Col span={12}>
-                    <div className="mb-2">
-                      <Text strong>差异率列名</Text>
-                      <Input
-                        style={{ marginTop: 4 }}
-                        placeholder="差异率列名"
-                        value={baseline.resultAlias.diffRateColumn}
-                        onChange={(e) => updateBaselineBlock(index, {
-                          resultAlias: { ...baseline.resultAlias, diffRateColumn: e.target.value }
-                        })}
-                      />
-                    </div>
-                  </Col>
-                </Row>
               </Card>
             ))}
+            {baselines.length === 0 && (
+              <Alert
+                message="暂无基准配置"
+                description="请点击上方按钮添加基准配置"
+                type="info"
+                showIcon
+              />
+            )}
           </div>
         );
 
-      case 4: // 规则集
+      case 4: // 计算指标
         return (
           <div className="space-y-4">
+            <Alert
+              message="基于基准配置计算衍生指标，如差异率、差异额等。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <div className="flex justify-between items-center">
+              <Title level={5}>计算指标配置</Title>
+              <Button type="primary" icon={<PlusOutlined />}>
+                添加计算指标
+              </Button>
+            </div>
+            <Card size="small" title="示例：与历史最低差异率" style={{ marginBottom: 16 }}>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <div><Text strong>指标名称:</Text> 与历史最低差异率</div>
+                  <div><Text strong>计算公式:</Text> (协议价 - 历史最低价) / 历史最低价 * 100</div>
+                </Col>
+                <Col span={12}>
+                  <div><Text strong>绑定基准:</Text> hist_min</div>
+                  <div><Text strong>单位:</Text> %</div>
+                </Col>
+              </Row>
+            </Card>
+            <Alert
+              message="暂无计算指标配置"
+              description="系统将根据基准配置自动生成常用的计算指标"
+              type="info"
+              showIcon
+            />
+          </div>
+        );
+
+      case 5: // 规则与输出
+        return (
+          <div className="space-y-4">
+            <Alert
+              message="配置比价规则集和输出格式，包括列选择、排序和样式规则。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
             <Form.Item name="ruleSetId" label="绑定规则集">
               <Select placeholder="请选择规则集" allowClear>
                 {mockRuleSets.map(rule => (
@@ -801,18 +836,6 @@ LIMIT 1000;`;
                 ))}
               </Select>
             </Form.Item>
-            <Card title="规则示例" size="small">
-              <div className="space-y-1 text-sm">
-                <div>• control: diff_rate_A &gt; 0.2 → 标红 &amp; 邮件</div>
-                <div>• score: 0.6*scoreA + 0.4*vendor_reputation</div>
-              </div>
-            </Card>
-          </div>
-        );
-
-      case 5: // 输出与排序
-        return (
-          <div className="space-y-4">
             <div>
               <Text strong>输出列</Text>
               <div className="mt-2 p-2 border border-dashed border-gray-300 rounded">
@@ -826,26 +849,24 @@ LIMIT 1000;`;
                       {index > 0 && (
                         <Button
                           size="small"
+                          icon={<ArrowUpOutlined />}
                           onClick={() => {
                             const newColumns = [...outputColumns];
                             [newColumns[index], newColumns[index - 1]] = [newColumns[index - 1], newColumns[index]];
                             setOutputColumns(newColumns);
                           }}
-                        >
-                          ↑
-                        </Button>
+                        />
                       )}
                       {index < outputColumns.length - 1 && (
                         <Button
                           size="small"
+                          icon={<ArrowDownOutlined />}
                           onClick={() => {
                             const newColumns = [...outputColumns];
                             [newColumns[index], newColumns[index + 1]] = [newColumns[index + 1], newColumns[index]];
                             setOutputColumns(newColumns);
                           }}
-                        >
-                          ↓
-                        </Button>
+                        />
                       )}
                     </Space>
                   </div>
@@ -864,27 +885,31 @@ LIMIT 1000;`;
               </Col>
               <Col span={12}>
                 <Form.Item name="orderDirection" label="排序方向">
-                  <Select placeholder="请选择排序方向">
-                    <Option value="asc">升序</Option>
-                    <Option value="desc">降序</Option>
-                  </Select>
+                  <Radio.Group>
+                    <Radio value="asc">升序 <ArrowUpOutlined /></Radio>
+                    <Radio value="desc">降序 <ArrowDownOutlined /></Radio>
+                  </Radio.Group>
                 </Form.Item>
               </Col>
             </Row>
-            <div>
-              <Text strong>导出格式</Text>
-              <div className="mt-2 space-x-4">
-                <Form.Item name="exportExcel" valuePropName="checked" style={{ display: 'inline-block', margin: 0 }}>
-                  <Checkbox>Excel</Checkbox>
+            <Divider>导出设置</Divider>
+            <Row gutter={16}>
+              <Col span={8}>
+                <Form.Item name="exportExcel" valuePropName="checked">
+                  <Checkbox>导出Excel</Checkbox>
                 </Form.Item>
-                <Form.Item name="exportCsv" valuePropName="checked" style={{ display: 'inline-block', margin: 0 }}>
-                  <Checkbox>CSV</Checkbox>
+              </Col>
+              <Col span={8}>
+                <Form.Item name="exportCsv" valuePropName="checked">
+                  <Checkbox>导出CSV</Checkbox>
                 </Form.Item>
-                <Form.Item name="exportApi" valuePropName="checked" style={{ display: 'inline-block', margin: 0 }}>
-                  <Checkbox>API</Checkbox>
+              </Col>
+              <Col span={8}>
+                <Form.Item name="exportApi" valuePropName="checked">
+                  <Checkbox>提供API</Checkbox>
                 </Form.Item>
-              </div>
-            </div>
+              </Col>
+            </Row>
           </div>
         );
 
@@ -892,10 +917,17 @@ LIMIT 1000;`;
         return (
           <div className="space-y-4">
             <Alert
+              message="预览比价结果并执行方案，确认无误后可保存并启用方案。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <Alert
               message="SQL校验"
               description="占位符就绪 ✓  对齐维度一致 ✓  时间口径：按月"
               type="success"
               showIcon
+              style={{ marginBottom: 16 }}
             />
             <Space wrap>
               <Button icon={<FileTextOutlined />} onClick={generateSQL}>生成SQL</Button>
@@ -905,6 +937,22 @@ LIMIT 1000;`;
               <Button icon={<SettingOutlined />}>配置调度</Button>
               <Button>仅保存不执行</Button>
             </Space>
+            <Row gutter={16} style={{ marginTop: 16 }}>
+              <Col span={12}>
+                <Card title="执行统计" size="small">
+                  <div><Text strong>预计记录数:</Text> 约 1,250 条</div>
+                  <div><Text strong>执行时间:</Text> 预计 2-3 秒</div>
+                  <div><Text strong>数据更新:</Text> 实时</div>
+                </Card>
+              </Col>
+              <Col span={12}>
+                <Card title="方案状态" size="small">
+                  <div><Text strong>当前状态:</Text> <Tag color="orange">草稿</Tag></div>
+                  <div><Text strong>创建时间:</Text> {new Date().toLocaleString()}</div>
+                  <div><Text strong>修改时间:</Text> {new Date().toLocaleString()}</div>
+                </Card>
+              </Col>
+            </Row>
           </div>
         );
 

@@ -17,60 +17,57 @@ import {
   Popconfirm,
   Switch,
   Divider,
-  Empty
+  Empty,
+  Steps,
+  Radio,
+  InputNumber,
+  Tabs
 } from 'antd';
 
 import { 
   Plus, 
   Edit, 
   Trash2, 
-  Search
+  Search,
+  Save,
+  Eye,
+  ArrowLeft
 } from 'lucide-react';
 
-const { Title } = Typography;
-
-// 数据集字段接口
-interface DatasetField {
-  id: string;
-  field_name: string;
-  field_code: string;
-  field_type: 'dimension' | 'metric'; // 维度/指标
-  data_type: 'string' | 'number' | 'date' | 'boolean';
-  is_dimension_field: boolean; // 是否维度字段
-  is_factor: boolean; // 是否比价因子
-  description?: string;
-}
-
-// 数据集接口
-interface Dataset {
-  id: string;
-  dataset_code: string;
-  dataset_name: string;
-  description?: string;
-  fields: DatasetField[];
-}
+const { Title, Text } = Typography;
+const { TextArea } = Input;
+const { Step } = Steps;
+const { TabPane } = Tabs;
 
 // 比价规则接口
 interface PriceRule {
   id: string;
-  rule_code: string;
-  rule_name: string;
-  dataset_code: string;
-  dataset_name: string;
-  is_scoring: boolean; // 是否评分型
-  enable_flag: boolean;
-  create_time: string;
-  update_time: string;
-  field_configs: FieldConfig[];
+  ruleSetName: string;
+  ruleSetCode: string;
+  tags: string[];
+  description?: string;
+  enabled: boolean;
+  rules: RuleDetail[];
+  scoreAggregate?: string;
+  status: 'DRAFT' | 'SAVED' | 'PUBLISHED';
+  createdAt: string;
+  updatedAt: string;
 }
 
-// 字段配置接口
-interface FieldConfig {
-  field_code: string;
-  field_name: string;
-  field_type: 'dimension' | 'metric';
-  is_dimension_field: boolean;
-  is_factor: boolean;
+// 规则明细接口
+interface RuleDetail {
+  id: string;
+  type: 'control' | 'score';
+  name: string;
+  // 控制型规则字段
+  expr?: string;
+  action?: 'warn' | 'error' | 'exclude' | 'mark';
+  style?: { color?: string };
+  notify?: { messageTemplateId?: string; flowId?: string };
+  // 评分型规则字段
+  factor?: string;
+  weight?: number;
+  scoreExpr?: string;
 }
 
 const PriceCompareRule: React.FC = () => {
@@ -78,111 +75,69 @@ const PriceCompareRule: React.FC = () => {
   const [rules, setRules] = useState<PriceRule[]>([
     {
       id: '1',
-      rule_code: 'RULE_PROCUREMENT_001',
-      rule_name: '采购比价规则',
-      dataset_code: 'procurement_data',
-      dataset_name: '采购数据集',
-      is_scoring: true,
-      enable_flag: true,
-      create_time: '2024-01-15 10:30:00',
-      update_time: '2024-01-15 10:30:00',
-      field_configs: [
-        { field_code: 'brand', field_name: '品牌', field_type: 'dimension', is_dimension_field: true, is_factor: false },
-        { field_code: 'price', field_name: '采购价', field_type: 'metric', is_dimension_field: false, is_factor: true },
-        { field_code: 'quality_score', field_name: '质量评分', field_type: 'metric', is_dimension_field: false, is_factor: true }
-      ]
-    },
-    {
-      id: '2',
-      rule_code: 'RULE_SUPPLIER_001',
-      rule_name: '供应商比价规则',
-      dataset_code: 'supplier_data',
-      dataset_name: '供应商数据集',
-      is_scoring: false,
-      enable_flag: true,
-      create_time: '2024-01-16 14:20:00',
-      update_time: '2024-01-16 14:20:00',
-      field_configs: [
-        { field_code: 'supplier_name', field_name: '供应商名称', field_type: 'dimension', is_dimension_field: true, is_factor: false },
-        { field_code: 'credit_level', field_name: '信用等级', field_type: 'metric', is_dimension_field: false, is_factor: false }
-      ]
-    }
-  ]);
-
-  // 示例数据集
-  const [datasets] = useState<Dataset[]>([
-    {
-      id: '1',
-      dataset_code: 'procurement_data',
-      dataset_name: '采购数据集',
-      description: '包含采购相关的所有数据字段',
-      fields: [
-        { id: '1', field_name: '商品名称', field_code: 'product_name', field_type: 'dimension', data_type: 'string', is_dimension_field: true, is_factor: false },
-        { id: '2', field_name: '品牌', field_code: 'brand', field_type: 'dimension', data_type: 'string', is_dimension_field: true, is_factor: false },
-        { id: '3', field_name: '供应商', field_code: 'supplier', field_type: 'dimension', data_type: 'string', is_dimension_field: true, is_factor: false },
-        { id: '4', field_name: '采购价', field_code: 'price', field_type: 'metric', data_type: 'number', is_dimension_field: false, is_factor: true },
-        { id: '5', field_name: '集采价', field_code: 'group_price', field_type: 'metric', data_type: 'number', is_dimension_field: false, is_factor: true },
-        { id: '6', field_name: '采购模式', field_code: 'purchase_mode', field_type: 'dimension', data_type: 'string', is_dimension_field: true, is_factor: false },
-        { id: '7', field_name: '质量评分', field_code: 'quality_score', field_type: 'metric', data_type: 'number', is_dimension_field: false, is_factor: true },
-        { id: '8', field_name: '交期', field_code: 'delivery_time', field_type: 'metric', data_type: 'number', is_dimension_field: false, is_factor: true },
-        { id: '9', field_name: '服务评分', field_code: 'service_score', field_type: 'metric', data_type: 'number', is_dimension_field: false, is_factor: true },
-      ]
-    },
-    {
-      id: '2',
-      dataset_code: 'supplier_data',
-      dataset_name: '供应商数据集',
-      description: '供应商基础信息数据',
-      fields: [
-        { id: '10', field_name: '供应商编码', field_code: 'supplier_code', field_type: 'dimension', data_type: 'string', is_dimension_field: true, is_factor: false },
-        { id: '11', field_name: '供应商名称', field_code: 'supplier_name', field_type: 'dimension', data_type: 'string', is_dimension_field: true, is_factor: false },
-        { id: '12', field_name: '信用等级', field_code: 'credit_level', field_type: 'metric', data_type: 'string', is_dimension_field: false, is_factor: false },
-      ]
+      ruleSetName: '默认供应商比价规则集',
+      ruleSetCode: 'rule_vendor_compare_default',
+      tags: ['控制型', '评分型'],
+      description: '价格差异预警+多因子评分',
+      enabled: true,
+      rules: [
+        {
+          id: 'r1',
+          type: 'control',
+          name: '高于历史最低10%预警',
+          expr: 'ind_diff_rate > 0.10',
+          action: 'warn',
+          style: { color: 'red' },
+          notify: { messageTemplateId: 'msg_tpl_over_10' }
+        },
+        {
+          id: 'r2',
+          type: 'score',
+          name: '价格因子得分',
+          factor: 'ind_diff_rate',
+          weight: 0.6,
+          scoreExpr: 'MAX(0, 100 - ind_diff_rate * 100)'
+        },
+        {
+          id: 'r3',
+          type: 'score',
+          name: '供应商评级因子',
+          factor: 'vendor_score',
+          weight: 0.4,
+          scoreExpr: 'vendor_score'
+        }
+      ],
+      scoreAggregate: 'SUM(weights * factorScores)',
+      status: 'PUBLISHED',
+      createdAt: '2024-01-15 10:30:00',
+      updatedAt: '2024-01-15 10:30:00'
     }
   ]);
 
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingRule, setEditingRule] = useState<PriceRule | null>(null);
   const [searchText, setSearchText] = useState('');
-  
-  // 表单状态
+  const [currentStep, setCurrentStep] = useState(0);
   const [form] = Form.useForm();
-  const [selectedDataset, setSelectedDataset] = useState<string>('');
-  const [fieldConfigs, setFieldConfigs] = useState<FieldConfig[]>([]);
+  const [ruleDetailForm] = Form.useForm();
+  const [currentRules, setCurrentRules] = useState<RuleDetail[]>([]);
+  const [editingRuleDetail, setEditingRuleDetail] = useState<RuleDetail | null>(null);
+  const [ruleDetailModalVisible, setRuleDetailModalVisible] = useState(false);
 
-  // 处理数据集变更
-  const handleDatasetChange = (datasetCode: string) => {
-    setSelectedDataset(datasetCode);
-    const dataset = datasets.find(d => d.dataset_code === datasetCode);
-    if (dataset) {
-      // 初始化字段配置
-      const configs: FieldConfig[] = dataset.fields.map(field => ({
-        field_code: field.field_code,
-        field_name: field.field_name,
-        field_type: field.field_type,
-        is_dimension_field: field.is_dimension_field,
-        is_factor: field.is_factor
-      }));
-      setFieldConfigs(configs);
-    }
-  };
-
-  // 处理字段配置变更
-  const handleFieldConfigChange = (fieldCode: string, field: string, value: boolean) => {
-    setFieldConfigs(prev => 
-      prev.map(config => 
-        config.field_code === fieldCode 
-          ? { ...config, [field]: value }
-          : config
-      )
-    );
-  };
+  // 可用字段/指标（模拟数据）
+  const availableFields = [
+    { code: 'ind_diff_rate', name: '价格差异率', type: 'metric' },
+    { code: 'vendor_id', name: '供应商ID', type: 'dimension' },
+    { code: 'vendor_score', name: '供应商评分', type: 'metric' },
+    { code: 'purchase_amount', name: '采购金额', type: 'metric' },
+    { code: 'quality_score', name: '质量评分', type: 'metric' }
+  ];
 
   // 新建规则
   const handleCreate = () => {
     setEditingRule(null);
-    setSelectedDataset('');
-    setFieldConfigs([]);
+    setCurrentRules([]);
+    setCurrentStep(0);
     form.resetFields();
     setIsModalVisible(true);
   };
@@ -190,13 +145,15 @@ const PriceCompareRule: React.FC = () => {
   // 编辑规则
   const handleEdit = (rule: PriceRule) => {
     setEditingRule(rule);
-    setSelectedDataset(rule.dataset_code);
-    setFieldConfigs(rule.field_configs);
+    setCurrentRules([...rule.rules]);
+    setCurrentStep(0);
     form.setFieldsValue({
-      rule_name: rule.rule_name,
-      rule_code: rule.rule_code,
-      dataset_code: rule.dataset_code,
-      is_scoring: rule.is_scoring
+      ruleSetName: rule.ruleSetName,
+      ruleSetCode: rule.ruleSetCode,
+      tags: rule.tags,
+      description: rule.description,
+      enabled: rule.enabled,
+      scoreAggregate: rule.scoreAggregate
     });
     setIsModalVisible(true);
   };
@@ -211,24 +168,19 @@ const PriceCompareRule: React.FC = () => {
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
-      const dataset = datasets.find(d => d.dataset_code === selectedDataset);
       
-      if (!dataset) {
-        message.error('请选择数据集');
-        return;
-      }
-
       const newRule: PriceRule = {
         id: editingRule?.id || Date.now().toString(),
-        rule_code: values.rule_code || `RULE_${values.rule_name.replace(/\s+/g, '_').toUpperCase()}_${Date.now()}`,
-        rule_name: values.rule_name,
-        dataset_code: selectedDataset,
-        dataset_name: dataset.dataset_name,
-        is_scoring: values.is_scoring || false,
-        enable_flag: true,
-        create_time: editingRule?.create_time || new Date().toLocaleString(),
-        update_time: new Date().toLocaleString(),
-        field_configs: fieldConfigs
+        ruleSetName: values.ruleSetName,
+        ruleSetCode: values.ruleSetCode || `rule_${values.ruleSetName.replace(/\s+/g, '_').toLowerCase()}_${Date.now()}`,
+        tags: values.tags || [],
+        description: values.description,
+        enabled: values.enabled !== false,
+        rules: currentRules,
+        scoreAggregate: values.scoreAggregate || 'SUM(weights * factorScores)',
+        status: 'SAVED',
+        createdAt: editingRule?.createdAt || new Date().toLocaleString(),
+        updatedAt: new Date().toLocaleString()
       };
 
       if (editingRule) {
@@ -245,58 +197,121 @@ const PriceCompareRule: React.FC = () => {
     }
   };
 
+  // 添加规则明细
+  const handleAddRuleDetail = () => {
+    setEditingRuleDetail(null);
+    ruleDetailForm.resetFields();
+    setRuleDetailModalVisible(true);
+  };
+
+  // 编辑规则明细
+  const handleEditRuleDetail = (ruleDetail: RuleDetail) => {
+    setEditingRuleDetail(ruleDetail);
+    ruleDetailForm.setFieldsValue(ruleDetail);
+    setRuleDetailModalVisible(true);
+  };
+
+  // 保存规则明细
+  const handleSaveRuleDetail = async () => {
+    try {
+      const values = await ruleDetailForm.validateFields();
+      
+      const newRuleDetail: RuleDetail = {
+        id: editingRuleDetail?.id || `rule_${Date.now()}`,
+        ...values
+      };
+
+      if (editingRuleDetail) {
+        setCurrentRules(prev => prev.map(rule => rule.id === editingRuleDetail.id ? newRuleDetail : rule));
+      } else {
+        setCurrentRules(prev => [...prev, newRuleDetail]);
+      }
+
+      setRuleDetailModalVisible(false);
+      message.success('规则明细保存成功');
+    } catch (error) {
+      console.error('保存规则明细失败:', error);
+    }
+  };
+
+  // 删除规则明细
+  const handleDeleteRuleDetail = (id: string) => {
+    setCurrentRules(prev => prev.filter(rule => rule.id !== id));
+    message.success('删除成功');
+  };
+
   // 过滤规则
   const filteredRules = rules.filter(rule => 
-    rule.rule_name.toLowerCase().includes(searchText.toLowerCase()) ||
-    rule.rule_code.toLowerCase().includes(searchText.toLowerCase())
+    rule.ruleSetName.toLowerCase().includes(searchText.toLowerCase()) ||
+    rule.ruleSetCode.toLowerCase().includes(searchText.toLowerCase())
   );
 
   // 规则列表表格列定义
   const columns = [
     {
-      title: '规则编码',
-      dataIndex: 'rule_code',
-      key: 'rule_code',
+      title: '规则集编码',
+      dataIndex: 'ruleSetCode',
+      key: 'ruleSetCode',
       width: 200,
     },
     {
-      title: '规则名称',
-      dataIndex: 'rule_name',
-      key: 'rule_name',
+      title: '规则集名称',
+      dataIndex: 'ruleSetName',
+      key: 'ruleSetName',
       width: 200,
     },
     {
-      title: '数据集',
-      dataIndex: 'dataset_name',
-      key: 'dataset_name',
+      title: '标签',
+      dataIndex: 'tags',
+      key: 'tags',
       width: 150,
-    },
-    {
-      title: '是否评分型',
-      dataIndex: 'is_scoring',
-      key: 'is_scoring',
-      width: 120,
-      render: (is_scoring: boolean) => (
-        <Tag color={is_scoring ? 'green' : 'blue'}>
-          {is_scoring ? '评分型' : '控制型'}
-        </Tag>
+      render: (tags: string[]) => (
+        <>
+          {tags.map(tag => (
+            <Tag key={tag} color={tag === '控制型' ? 'blue' : 'green'}>
+              {tag}
+            </Tag>
+          ))}
+        </>
       ),
     },
     {
-      title: '状态',
-      dataIndex: 'enable_flag',
-      key: 'enable_flag',
+      title: '规则数量',
+      dataIndex: 'rules',
+      key: 'rulesCount',
       width: 100,
-      render: (enable_flag: boolean) => (
-        <Tag color={enable_flag ? 'green' : 'red'}>
-          {enable_flag ? '启用' : '禁用'}
+      render: (rules: RuleDetail[]) => rules.length,
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 100,
+      render: (status: string) => {
+        const statusMap = {
+          'DRAFT': { color: 'default', text: '草稿' },
+          'SAVED': { color: 'processing', text: '已保存' },
+          'PUBLISHED': { color: 'success', text: '已发布' }
+        };
+        const config = statusMap[status as keyof typeof statusMap];
+        return <Tag color={config.color}>{config.text}</Tag>;
+      },
+    },
+    {
+      title: '启用状态',
+      dataIndex: 'enabled',
+      key: 'enabled',
+      width: 100,
+      render: (enabled: boolean) => (
+        <Tag color={enabled ? 'green' : 'red'}>
+          {enabled ? '启用' : '禁用'}
         </Tag>
       ),
     },
     {
       title: '更新时间',
-      dataIndex: 'update_time',
-      key: 'update_time',
+      dataIndex: 'updatedAt',
+      key: 'updatedAt',
       width: 180,
     },
     {
@@ -313,7 +328,7 @@ const PriceCompareRule: React.FC = () => {
             编辑
           </Button>
           <Popconfirm
-            title="确定要删除这个规则吗？"
+            title="确定要删除这个规则集吗？"
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
@@ -331,56 +346,242 @@ const PriceCompareRule: React.FC = () => {
     },
   ];
 
-  // 字段配置表格列定义
-  const fieldColumns = [
+  // 规则明细表格列定义
+  const ruleDetailColumns = [
     {
-      title: '字段名',
-      dataIndex: 'field_name',
-      key: 'field_name',
+      title: '规则名称',
+      dataIndex: 'name',
+      key: 'name',
       width: 150,
     },
     {
       title: '类型',
-      dataIndex: 'field_type',
-      key: 'field_type',
+      dataIndex: 'type',
+      key: 'type',
       width: 100,
       render: (type: string) => (
-        <Tag color={type === 'dimension' ? 'blue' : 'green'}>
-          {type === 'dimension' ? '维度' : '指标'}
+        <Tag color={type === 'control' ? 'blue' : 'green'}>
+          {type === 'control' ? '控制型' : '评分型'}
         </Tag>
       ),
     },
     {
-      title: '是否维度字段',
-      dataIndex: 'is_dimension_field',
-      key: 'is_dimension_field',
-      width: 120,
-      render: (_: any, record: FieldConfig) => (
-        <Switch
-          checked={record.is_dimension_field}
-          onChange={(checked) => handleFieldConfigChange(record.field_code, 'is_dimension_field', checked)}
-          size="small"
-        />
+      title: '表达式/因子',
+      key: 'expression',
+      width: 200,
+      render: (_: any, record: RuleDetail) => (
+        <Text code>{record.type === 'control' ? record.expr : record.factor}</Text>
       ),
     },
     {
-      title: '是否比价因子',
-      dataIndex: 'is_factor',
-      key: 'is_factor',
+      title: '动作/权重',
+      key: 'actionOrWeight',
       width: 120,
-      render: (_: any, record: FieldConfig) => {
-        const isScoring = form.getFieldValue('is_scoring');
-        return (
-          <Switch
-            checked={record.is_factor}
-            onChange={(checked) => handleFieldConfigChange(record.field_code, 'is_factor', checked)}
-            disabled={!isScoring}
+      render: (_: any, record: RuleDetail) => (
+        record.type === 'control' ? 
+          <Tag color="orange">{record.action}</Tag> : 
+          <Text>{record.weight}</Text>
+      ),
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 120,
+      render: (_: any, record: RuleDetail) => (
+        <Space size="small">
+          <Button 
+            type="link" 
             size="small"
-          />
-        );
-      },
+            icon={<Edit className="w-3 h-3" />} 
+            onClick={() => handleEditRuleDetail(record)}
+          >
+            编辑
+          </Button>
+          <Popconfirm
+            title="确定要删除这个规则吗？"
+            onConfirm={() => handleDeleteRuleDetail(record.id)}
+            okText="确定"
+            cancelText="取消"
+          >
+            <Button 
+              type="link" 
+              size="small"
+              danger 
+              icon={<Trash2 className="w-3 h-3" />}
+            >
+              删除
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
     },
   ];
+
+  // 步骤内容渲染
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 0: // 基本信息
+        return (
+          <div>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  label="规则集名称"
+                  name="ruleSetName"
+                  rules={[{ required: true, message: '请输入规则集名称' }]}
+                >
+                  <Input placeholder="请输入规则集名称" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  label="规则集编码"
+                  name="ruleSetCode"
+                >
+                  <Input placeholder="系统自动生成" disabled />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  label="标签"
+                  name="tags"
+                >
+                  <Select
+                    mode="tags"
+                    placeholder="请选择或输入标签"
+                    options={[
+                      { value: '控制型', label: '控制型' },
+                      { value: '评分型', label: '评分型' },
+                      { value: '价格监控', label: '价格监控' },
+                      { value: '供应商管理', label: '供应商管理' }
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  label="启用"
+                  name="enabled"
+                  valuePropName="checked"
+                >
+                  <Switch />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Form.Item
+              label="描述"
+              name="description"
+            >
+              <TextArea rows={3} placeholder="请输入规则集描述" />
+            </Form.Item>
+          </div>
+        );
+      
+      case 1: // 变量来源
+        return (
+          <div>
+            <Alert
+              message="变量来源说明"
+              description="可用指标/字段来自方案执行时传入的数据列，如 ind_diff_rate、vendor_id 等"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <Table
+              columns={[
+                { title: '字段编码', dataIndex: 'code', key: 'code' },
+                { title: '字段名称', dataIndex: 'name', key: 'name' },
+                { title: '类型', dataIndex: 'type', key: 'type', render: (type: string) => (
+                  <Tag color={type === 'dimension' ? 'blue' : 'green'}>
+                    {type === 'dimension' ? '维度' : '指标'}
+                  </Tag>
+                )}
+              ]}
+              dataSource={availableFields}
+              rowKey="code"
+              pagination={false}
+              size="small"
+            />
+          </div>
+        );
+      
+      case 2: // 规则明细
+        return (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <Button 
+                type="primary" 
+                icon={<Plus className="w-4 h-4" />} 
+                onClick={handleAddRuleDetail}
+              >
+                新增规则
+              </Button>
+            </div>
+            <Table
+              columns={ruleDetailColumns}
+              dataSource={currentRules}
+              rowKey="id"
+              pagination={false}
+              size="small"
+            />
+          </div>
+        );
+      
+      case 3: // 评分聚合
+        return (
+          <div>
+            <Alert
+              message="评分聚合配置"
+              description="配置多个评分型规则的聚合方式"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <Form.Item
+              label="总分计算公式"
+              name="scoreAggregate"
+              rules={[{ required: true, message: '请输入总分计算公式' }]}
+            >
+              <Select
+                placeholder="请选择或输入总分计算公式"
+                options={[
+                  { value: 'SUM(weights * factorScores)', label: 'SUM(weights * factorScores) - 加权求和' },
+                  { value: 'AVG(factorScores)', label: 'AVG(factorScores) - 平均值' },
+                  { value: 'MAX(factorScores)', label: 'MAX(factorScores) - 最大值' },
+                  { value: 'MIN(factorScores)', label: 'MIN(factorScores) - 最小值' }
+                ]}
+                showSearch
+                allowClear
+              />
+            </Form.Item>
+            
+            {/* 显示当前评分型规则 */}
+            {currentRules.filter(rule => rule.type === 'score').length > 0 && (
+              <div>
+                <Divider>当前评分型规则</Divider>
+                <Table
+                  columns={[
+                    { title: '规则名称', dataIndex: 'name', key: 'name' },
+                    { title: '因子', dataIndex: 'factor', key: 'factor' },
+                    { title: '权重', dataIndex: 'weight', key: 'weight' },
+                    { title: '得分表达式', dataIndex: 'scoreExpr', key: 'scoreExpr', render: (text: string) => <Text code>{text}</Text> }
+                  ]}
+                  dataSource={currentRules.filter(rule => rule.type === 'score')}
+                  rowKey="id"
+                  pagination={false}
+                  size="small"
+                />
+              </div>
+            )}
+          </div>
+        );
+      
+      default:
+        return null;
+    }
+  };
 
   return (
     <div style={{ padding: '24px', backgroundColor: '#f5f5f5', minHeight: '100vh' }}>
@@ -390,14 +591,14 @@ const PriceCompareRule: React.FC = () => {
           <Title level={4} style={{ margin: 0 }}>比价规则管理</Title>
           <Space>
             <Input
-              placeholder="搜索规则名称或编码"
+              placeholder="搜索规则集名称或编码"
               prefix={<Search className="w-4 h-4" />}
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               style={{ width: 250 }}
             />
             <Button type="primary" icon={<Plus className="w-4 h-4" />} onClick={handleCreate}>
-              新建规则
+              新建规则集
             </Button>
           </Space>
         </div>
@@ -419,104 +620,164 @@ const PriceCompareRule: React.FC = () => {
         />
       </Card>
 
-      {/* 新建/编辑规则弹窗 */}
+      {/* 新建/编辑规则集弹窗 */}
       <Modal
-        title={editingRule ? '编辑比价规则' : '新建比价规则'}
+        title={editingRule ? '编辑比价规则集' : '新建比价规则集'}
         open={isModalVisible}
         onCancel={() => setIsModalVisible(false)}
-        onOk={handleSave}
-        width={800}
-        okText="保存"
-        cancelText="取消"
+        width={1000}
+        footer={[
+          <Button key="back" onClick={() => setIsModalVisible(false)}>
+            取消
+          </Button>,
+          <Button key="prev" disabled={currentStep === 0} onClick={() => setCurrentStep(currentStep - 1)}>
+            上一步
+          </Button>,
+          <Button key="next" disabled={currentStep === 3} type="primary" onClick={() => setCurrentStep(currentStep + 1)}>
+            下一步
+          </Button>,
+          <Button key="save" type="primary" icon={<Save className="w-4 h-4" />} onClick={handleSave}>
+            保存
+          </Button>,
+        ]}
       >
+        <Steps current={currentStep} style={{ marginBottom: 24 }}>
+          <Step title="基本信息" />
+          <Step title="变量来源" />
+          <Step title="规则明细" />
+          <Step title="评分聚合" />
+        </Steps>
+        
         <Form form={form} layout="vertical">
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                label="规则名称"
-                name="rule_name"
-                rules={[{ required: true, message: '请输入规则名称' }]}
-              >
-                <Input placeholder="请输入规则名称" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                label="规则编码"
-                name="rule_code"
-              >
-                <Input placeholder="系统自动生成" disabled />
-              </Form.Item>
-            </Col>
-          </Row>
-          
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                label="选择数据集"
-                name="dataset_code"
-                rules={[{ required: true, message: '请选择数据集' }]}
-              >
-                <Select
-                  placeholder="请选择数据集"
-                  onChange={handleDatasetChange}
-                  value={selectedDataset}
-                >
-                  {datasets.map(dataset => (
-                    <Select.Option key={dataset.id} value={dataset.dataset_code}>
-                      {dataset.dataset_name}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                label="是否评分型"
-                name="is_scoring"
-                valuePropName="checked"
-              >
-                <Switch 
-                  checkedChildren="是评分型（启用因子权重配置）" 
-                  unCheckedChildren="控制型" 
-                  onChange={(checked) => {
-                    // 当切换评分型时，重置比价因子配置
-                    if (!checked) {
-                      setFieldConfigs(prev => 
-                        prev.map(config => ({ ...config, is_factor: false }))
-                      );
-                    }
-                  }}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
+          {renderStepContent()}
+        </Form>
+      </Modal>
 
-          <Divider>字段配置（从数据集字段中自动带出，可勾选）</Divider>
+      {/* 规则明细编辑弹窗 */}
+      <Modal
+        title={editingRuleDetail ? '编辑规则明细' : '新增规则明细'}
+        open={ruleDetailModalVisible}
+        onCancel={() => setRuleDetailModalVisible(false)}
+        onOk={handleSaveRuleDetail}
+        width={600}
+      >
+        <Form form={ruleDetailForm} layout="vertical">
+          <Form.Item
+            label="规则名称"
+            name="name"
+            rules={[{ required: true, message: '请输入规则名称' }]}
+          >
+            <Input placeholder="请输入规则名称" />
+          </Form.Item>
           
-          {selectedDataset ? (
-            <div>
-              <Alert
-                message="说明：是否比价因子选项仅在'评分型'时启用"
-                type="info"
-                showIcon
-                style={{ marginBottom: 16 }}
-              />
-              <Table
-                columns={fieldColumns}
-                dataSource={fieldConfigs}
-                rowKey="field_code"
-                pagination={false}
-                size="small"
-                scroll={{ y: 300 }}
-              />
-            </div>
-          ) : (
-            <Empty 
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="请先选择数据集"
-            />
-          )}
+          <Form.Item
+            label="规则类型"
+            name="type"
+            rules={[{ required: true, message: '请选择规则类型' }]}
+          >
+            <Radio.Group>
+              <Radio value="control">控制型（阈值/布尔命中 → 触发动作）</Radio>
+              <Radio value="score">评分型（多因子加权）</Radio>
+            </Radio.Group>
+          </Form.Item>
+
+          <Form.Item noStyle shouldUpdate={(prevValues, currentValues) => prevValues.type !== currentValues.type}>
+            {({ getFieldValue }) => {
+              const ruleType = getFieldValue('type');
+              
+              if (ruleType === 'control') {
+                return (
+                  <>
+                    <Form.Item
+                      label="条件表达式"
+                      name="expr"
+                      rules={[{ required: true, message: '请输入条件表达式' }]}
+                    >
+                      <Input placeholder="如: ind_diff_rate > 0.10" />
+                    </Form.Item>
+                    
+                    <Form.Item
+                      label="动作"
+                      name="action"
+                      rules={[{ required: true, message: '请选择动作' }]}
+                    >
+                      <Select placeholder="请选择动作">
+                        <Select.Option value="warn">warn - 警告</Select.Option>
+                        <Select.Option value="error">error - 错误</Select.Option>
+                        <Select.Option value="exclude">exclude - 排除</Select.Option>
+                        <Select.Option value="mark">mark - 标记</Select.Option>
+                      </Select>
+                    </Form.Item>
+                    
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item label="消息模板ID" name={['notify', 'messageTemplateId']}>
+                          <Input placeholder="消息模板ID" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item label="审批流程ID" name={['notify', 'flowId']}>
+                          <Input placeholder="审批流程ID" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                    
+                    <Form.Item label="颜色标记" name={['style', 'color']}>
+                      <Select placeholder="请选择颜色">
+                        <Select.Option value="red">红色</Select.Option>
+                        <Select.Option value="orange">橙色</Select.Option>
+                        <Select.Option value="yellow">黄色</Select.Option>
+                        <Select.Option value="green">绿色</Select.Option>
+                        <Select.Option value="blue">蓝色</Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </>
+                );
+              } else if (ruleType === 'score') {
+                return (
+                  <>
+                    <Form.Item
+                      label="因子"
+                      name="factor"
+                      rules={[{ required: true, message: '请选择因子' }]}
+                    >
+                      <Select placeholder="请选择因子">
+                        {availableFields.filter(field => field.type === 'metric').map(field => (
+                          <Select.Option key={field.code} value={field.code}>
+                            {field.name} ({field.code})
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                    
+                    <Form.Item
+                      label="权重"
+                      name="weight"
+                      rules={[{ required: true, message: '请输入权重' }]}
+                    >
+                      <InputNumber
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        placeholder="0.0 - 1.0"
+                        style={{ width: '100%' }}
+                      />
+                    </Form.Item>
+                    
+                    <Form.Item
+                      label="得分表达式"
+                      name="scoreExpr"
+                      rules={[{ required: true, message: '请输入得分表达式' }]}
+                    >
+                      <Input placeholder="如: MAX(0, 100 - ind_diff_rate*100)" />
+                    </Form.Item>
+                  </>
+                );
+              }
+              
+              return null;
+            }}
+          </Form.Item>
         </Form>
       </Modal>
     </div>

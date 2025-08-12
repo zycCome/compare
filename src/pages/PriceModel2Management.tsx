@@ -1,10 +1,93 @@
 import React, { useState } from 'react';
-import { Card, Button, Input, Radio, Checkbox, Select, Tag, Divider, Form, Space, Typography, Alert, Row, Col, Tabs, Modal } from 'antd';
-import { PlusOutlined, SaveOutlined, EyeOutlined, SendOutlined, LeftOutlined, CheckOutlined, CloseOutlined, EditOutlined, CopyOutlined, DeleteOutlined, RightOutlined } from '@ant-design/icons';
+import { Card, Button, Input, Radio, Checkbox, Select, Tag, Divider, Form, Space, Typography, Alert, Row, Col, Steps, Modal, Table, Switch } from 'antd';
+import { PlusOutlined, SaveOutlined, EyeOutlined, SendOutlined, LeftOutlined, CheckOutlined, EditOutlined, CopyOutlined, DeleteOutlined, RightOutlined, DatabaseOutlined, LinkOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
+
+interface Dataset {
+  id: string;
+  alias: string;
+  name: string;
+}
+
+interface JoinConfig {
+  id: string;
+  targetAlias: string;
+  type: 'LEFT' | 'RIGHT' | 'INNER';
+  on: string;
+  uniqueCheck: boolean;
+}
+
+// 新的数据结构定义，基于优化文档
+
+
+// 保留原有接口用于兼容
+interface AttachedDatasetConfig {
+  id: string;
+  datasetId: string;
+  datasetName: string;
+  alias: string;
+  joinType: 'INNER' | 'LEFT' | 'RIGHT';
+  joinConditions: string[];
+  joinPreview: string;
+}
+
+interface FieldMapping {
+  field: string;
+  semantic: string;
+}
+
+interface ConditionInheritance {
+  from: string;
+  to: string[];
+}
+
+interface AnalysisIndicator {
+  libId: string;
+  name: string;
+  datasetAlias: string;
+  unit: string;
+  aggregation: string;
+}
+
+interface BaselineCandidate {
+  libId: string;
+  name: string;
+  datasetAlias: string;
+  unit: string;
+  aggregation: string;
+}
+
+interface DisplayAttribute {
+  id: string;
+  name: string;
+  datasetAlias: string;
+  field: string;
+  displayName: string;
+  bindField: string;
+  attachTo: string[];
+  dedupe: {
+    type: string;
+    orderBy?: string;
+  };
+}
+
+interface QueryCondition {
+  id: string;
+  fieldCode: string;
+  fieldName: string;
+  componentType: string;
+}
+
+interface BaselineQueryCondition {
+  id: string;
+  baselineIndicatorId: string; // 关联的基准指标ID
+  fieldCode: string;
+  fieldName: string;
+  componentType: string;
+}
 
 interface PriceModel2 {
   id?: string;
@@ -12,63 +95,292 @@ interface PriceModel2 {
   modelCode: string;
   tags: string[];
   description: string;
-  status: 'enabled' | 'disabled';
-  mainDataset: string;
-  baselineDatasets: string[];
-  compareObject: string;
-  analysisObject: string;
+  enabled: boolean;
+  
+  // 数据源绑定
+  primaryDataset: Dataset;
+  attachedDatasets: Dataset[];
+  joins: JoinConfig[];
+  fieldMapping: FieldMapping[];
+  conditionInheritance: ConditionInheritance[];
+  
+  // 比价对象
+  compareKey: string[];
+  analysisTarget: string;
   analysisDimensions: string[];
-  analysisIndicators: string[];
-  baselineCandidates: string[];
+  
+  // 指标与基准
+  analysisIndicators: AnalysisIndicator[];
+  baselineCandidates: BaselineCandidate[];
+  
+  // 显示属性
+  displayAttributes: DisplayAttribute[];
 }
 
 const PriceModel2Management: React.FC = () => {
-  const [models, setModels] = useState<PriceModel2[]>([]);
+  const [models, setModels] = useState<PriceModel2[]>([
+    {
+      id: '1',
+      modelName: '供应商比价模型',
+      modelCode: 'mdl_vendor_compare',
+      tags: ['同品多商', '历史对比'],
+      description: '基于协议价与历史采购价格的供应商比价分析模型',
+      enabled: true,
+      primaryDataset: { id: 'ds_agreement_price', alias: 'a', name: '协议价数据集' },
+      attachedDatasets: [
+        { id: 'ds_po_hist', alias: 'h', name: '历史采购数据集' },
+        { id: 'ds_market', alias: 'm', name: '市场行情数据集' }
+      ],
+      joins: [],
+      fieldMapping: [],
+      conditionInheritance: [],
+      compareKey: ['item_id', 'vendor_id'],
+      analysisTarget: 'vendor',
+      analysisDimensions: ['purchase_org', 'brand'],
+      analysisIndicators: [],
+      baselineCandidates: [],
+      displayAttributes: []
+    },
+    {
+      id: '2',
+      modelName: '市场行情比价模型',
+      modelCode: 'mdl_market_compare',
+      tags: ['市场对比'],
+      description: '基于市场行情数据的价格比较分析模型',
+      enabled: false,
+      primaryDataset: { id: 'ds_market', alias: 'm', name: '市场行情数据集' },
+      attachedDatasets: [
+        { id: 'ds_agreement_price', alias: 'a', name: '协议价数据集' }
+      ],
+      joins: [],
+      fieldMapping: [],
+      conditionInheritance: [],
+      compareKey: ['item_id'],
+      analysisTarget: 'market',
+      analysisDimensions: ['brand', 'spec'],
+      analysisIndicators: [],
+      baselineCandidates: [],
+      displayAttributes: []
+    }
+  ]);
   const [form] = Form.useForm();
   const [editingModel, setEditingModel] = useState<PriceModel2 | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [currentStep, setCurrentStep] = useState('1');
+  const [currentStep, setCurrentStep] = useState(0);
+  
+  // 数据源绑定相关状态
+  const [attachedDatasets, setAttachedDatasets] = useState<AttachedDatasetConfig[]>([]);
+  const [joins, setJoins] = useState<JoinConfig[]>([]);
+  const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
+  const [conditionInheritances, setConditionInheritances] = useState<ConditionInheritance[]>([]);
+  
+  // 主数据集状态
+  const [primaryDataset, setPrimaryDataset] = useState<{ datasetId: string; alias: string } | null>(null);
+  
+  // 指标与基准相关状态
+  const [analysisIndicators, setAnalysisIndicators] = useState<AnalysisIndicator[]>([]);
+  const [baselineCandidates, setBaselineCandidates] = useState<BaselineCandidate[]>([]);
+  
+  // 显示属性相关状态
+  const [displayAttributes, setDisplayAttributes] = useState<DisplayAttribute[]>([]);
+  
+  // 比价维度相关状态
+  const [analysisDimensions, setAnalysisDimensions] = useState<string[]>([]);
+  
+  // 弹窗状态
+  const [datasetModalVisible, setDatasetModalVisible] = useState(false);
+  const [conditionEditModalVisible, setConditionEditModalVisible] = useState(false);
+  const [dimensionModalVisible, setDimensionModalVisible] = useState(false);
+
+  const [datasetModalType, setDatasetModalType] = useState<'primary' | 'attached'>('primary');
+  const [selectedDatasetInModal, setSelectedDatasetInModal] = useState<Dataset | null>(null);
+  const [selectedDatasetsInModal, setSelectedDatasetsInModal] = useState<Dataset[]>([]);
+  const [joinModalVisible, setJoinModalVisible] = useState(false);
+  const [indicatorModalVisible, setIndicatorModalVisible] = useState(false);
   const [baselineModalVisible, setBaselineModalVisible] = useState(false);
-  const [selectedBaselines, setSelectedBaselines] = useState<string[]>([]);
-  const [tempSelectedBaselines, setTempSelectedBaselines] = useState<string[]>([]);
+  const [baselineIndicatorModalVisible, setBaselineIndicatorModalVisible] = useState(false);
+  const [displayAttrModalVisible, setDisplayAttrModalVisible] = useState(false);
+  const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
+  const [selectedBaselineIndicators, setSelectedBaselineIndicators] = useState<string[]>([]);
+  const [selectedDisplayAttrs, setSelectedDisplayAttrs] = useState<string[]>([]);
+  const [selectedDimensions, setSelectedDimensions] = useState<string[]>([]);
+  const [queryConditionModalVisible, setQueryConditionModalVisible] = useState(false);
+  const [selectedQueryConditions, setSelectedQueryConditions] = useState<string[]>([]);
+  const [queryConditions, setQueryConditions] = useState<QueryCondition[]>([]);
+
+  // 基准查询条件配置相关状态
+  const [baselineQueryConditionModalVisible, setBaselineQueryConditionModalVisible] = useState(false);
+  const [selectedBaselineQueryConditions, setSelectedBaselineQueryConditions] = useState<string[]>([]);
+  const [baselineQueryConditions, setBaselineQueryConditions] = useState<BaselineQueryCondition[]>([]);
+  const [currentBaselineIndicatorId, setCurrentBaselineIndicatorId] = useState<string>(''); // 当前配置查询条件的基准指标ID
 
   // Mock data
   const mockDatasets = [
-    { value: 'ds_agreement_price', label: '集团采购协议数据集' },
-    { value: 'ds_history_order', label: '历史采购订单数据集' },
-    { value: 'ds_market_price', label: '市场行情价数据集' },
-    { value: 'ds_tender_platform', label: '招采平台报价数据集' }
+    { id: 'ds_agreement_price', alias: 'a', name: '协议价数据集' },
+    { id: 'ds_po_hist', alias: 'h', name: '历史采购数据集' },
+    { id: 'ds_market', alias: 'm', name: '市场行情数据集' },
+    { id: 'ds_bid', alias: 'b', name: '招采中标数据集' }
   ];
 
   const mockFields = [
-    { value: 'product_id', label: '产品ID' },
-    { value: 'vendor_id', label: '供应商ID' },
+    { value: 'sku_code', label: '物料编码' },
+    { value: 'supplier_code', label: '供应商编码' },
+    { value: 'spec', label: '规格' },
+    { value: 'brand_no', label: '品牌' },
     { value: 'purchase_org', label: '采购组织' },
-    { value: 'brand', label: '品牌' },
-    { value: 'spec_model', label: '规格型号' },
-    { value: 'reg_level', label: '注册证等级' },
-    { value: 'purchase_mode', label: '采购模式' }
+    { value: 'trade_date', label: '交易日期' },
+    { value: 'price', label: '含税单价' }
   ];
 
   const mockIndicators = [
-    { value: 'ind_agreement_price', label: '协议价' },
-    { value: 'ind_trade_avg_price', label: '平均成交价' },
-    { value: 'ind_trade_min_price', label: '最低成交价' },
-    { value: 'ind_history_min_price', label: '历史最低价' },
-    { value: 'ind_market_ref_price', label: '市场参考价' },
-    { value: 'ind_tender_win_price', label: '招采中标价' }
+    { libId: 'lib.agr_price', name: '协议价', datasetAlias: 'a', unit: 'CNY', aggregation: 'NONE' },
+    { libId: 'lib.tax_incl_price', name: '含税价', datasetAlias: 'a', unit: 'CNY', aggregation: 'NONE' },
+    { libId: 'lib.hist_min', name: '历史最低价', datasetAlias: 'h', unit: 'CNY', aggregation: 'MIN' },
+    { libId: 'lib.market_ref', name: '市场参考价', datasetAlias: 'm', unit: 'CNY', aggregation: 'AVG' },
+    { libId: 'lib.bid_min', name: '中标最低价', datasetAlias: 'b', unit: 'CNY', aggregation: 'MIN' }
+  ];
+
+  const mockDisplayAttributes = [
+    {
+      id: 'attr_1',
+      fieldCode: 'sku_code',
+      name: '物料编码',
+      fieldType: 'VARCHAR',
+      datasetAlias: 'a',
+      field: 'sku_code',
+      displayName: '物料编码',
+      bindField: 'sku_code',
+      attachTo: ['协议价'],
+      dedupe: { type: '保留最新', orderBy: 'trade_date DESC' }
+    },
+    {
+      id: 'attr_2',
+      fieldCode: 'supplier_name',
+      name: '供应商名称',
+      fieldType: 'VARCHAR',
+      datasetAlias: 'a',
+      field: 'supplier_name',
+      displayName: '供应商名称',
+      bindField: 'supplier_name',
+      attachTo: ['协议价', '含税价'],
+      dedupe: { type: '保留最新' }
+    },
+    {
+      id: 'attr_3',
+      fieldCode: 'brand_no',
+      name: '品牌',
+      fieldType: 'VARCHAR',
+      datasetAlias: 'a',
+      field: 'brand_no',
+      displayName: '品牌',
+      bindField: 'brand_no',
+      attachTo: ['协议价'],
+      dedupe: { type: '保留最新' }
+    },
+    {
+      id: 'attr_4',
+      fieldCode: 'purchase_org',
+      name: '采购组织',
+      fieldType: 'VARCHAR',
+      datasetAlias: 'a',
+      field: 'purchase_org',
+      displayName: '采购组织',
+      bindField: 'purchase_org',
+      attachTo: ['协议价', '含税价'],
+      dedupe: { type: '保留最新' }
+    },
+    {
+      id: 'attr_5',
+      fieldCode: 'trade_date',
+      name: '交易日期',
+      fieldType: 'DATE',
+      datasetAlias: 'h',
+      field: 'trade_date',
+      displayName: '交易日期',
+      bindField: 'trade_date',
+      attachTo: ['历史最低价'],
+      dedupe: { type: '保留最新', orderBy: 'trade_date DESC' }
+    }
+  ];
+
+  const mockQueryConditionFields = [
+    {
+      id: 'qc_1',
+      fieldCode: 'sku_code',
+      fieldName: '物料编码',
+      componentType: '弹框多选'
+    },
+    {
+      id: 'qc_2',
+      fieldCode: 'supplier_code',
+      fieldName: '供应商编码',
+      componentType: '弹框单选'
+    },
+    {
+      id: 'qc_3',
+      fieldCode: 'purchase_org',
+      fieldName: '采购组织',
+      componentType: '下拉单选'
+    },
+    {
+      id: 'qc_4',
+      fieldCode: 'trade_date',
+      fieldName: '交易日期',
+      componentType: '日期'
+    },
+    {
+      id: 'qc_5',
+      fieldCode: 'create_time',
+      fieldName: '创建时间',
+      componentType: '时间'
+    }
+  ];
+
+  const steps = [
+    { title: '基本信息', description: '模型名称、编码等基础信息' },
+    { title: '选择数据集', description: '选择主数据集、基准数据集' },
+    { title: '设置比价对象', description: '比价对象、比价指标、比价维度、属性显示' },
+    { title: '设置基准对象', description: '基准指标' },
+    { title: '预览与校验', description: 'SQL预览和配置校验' }
   ];
 
   const handleCreateNew = () => {
     setIsEditing(true);
     setEditingModel(null);
+    setCurrentStep(0);
     form.resetFields();
+    // 重置所有状态
+    setAttachedDatasets([]);
+    setJoins([]);
+    setFieldMappings([]);
+    setConditionInheritances([]);
+    setAnalysisIndicators([]);
+    setBaselineCandidates([]);
+    setDisplayAttributes([]);
   };
 
   const handleEdit = (model: PriceModel2) => {
     setIsEditing(true);
     setEditingModel(model);
+    setCurrentStep(0);
     form.setFieldsValue(model);
+    // 设置相关状态 - 转换旧的Dataset格式到新的AttachedDatasetConfig格式
+    const convertedAttachedDatasets = (model.attachedDatasets || []).map((dataset: Dataset) => ({
+      id: Date.now().toString() + Math.random(),
+      datasetId: dataset.id,
+      datasetName: dataset.name,
+      alias: dataset.alias,
+      joinType: 'LEFT' as const,
+      joinConditions: [],
+      joinPreview: ''
+    }));
+    setAttachedDatasets(convertedAttachedDatasets);
+    setJoins(model.joins || []);
+    setFieldMappings(model.fieldMapping || []);
+    setConditionInheritances(model.conditionInheritance || []);
+    setAnalysisIndicators(model.analysisIndicators || []);
+    setBaselineCandidates(model.baselineCandidates || []);
+    setDisplayAttributes(model.displayAttributes || []);
   };
 
   const handleSave = async () => {
@@ -76,7 +388,14 @@ const PriceModel2Management: React.FC = () => {
       const values = await form.validateFields();
       const newModel: PriceModel2 = {
         ...values,
-        id: editingModel?.id || Date.now().toString()
+        id: editingModel?.id || Date.now().toString(),
+        attachedDatasets,
+        joins,
+        fieldMapping: fieldMappings,
+        conditionInheritance: conditionInheritances,
+        analysisIndicators,
+        baselineCandidates,
+        displayAttributes
       };
       
       if (editingModel) {
@@ -93,55 +412,959 @@ const PriceModel2Management: React.FC = () => {
   };
 
   const handleNext = () => {
-    const stepOrder = ['1', '2', '3', '4', '5'];
-    const currentIndex = stepOrder.indexOf(currentStep);
-    if (currentIndex < stepOrder.length - 1) {
-      setCurrentStep(stepOrder[currentIndex + 1]);
+    if (currentStep < steps.length - 1) {
+      setCurrentStep(currentStep + 1);
     }
   };
 
   const handlePrev = () => {
-    const stepOrder = ['1', '2', '3', '4', '5'];
-    const currentIndex = stepOrder.indexOf(currentStep);
-    if (currentIndex > 0) {
-      setCurrentStep(stepOrder[currentIndex - 1]);
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
     }
-  };
-
-  const handlePreview = () => {
-    console.log('预览模型');
-  };
-
-  const handlePublish = () => {
-    console.log('发布模型');
-  };
-
-  const handleBaselineModalOk = () => {
-    setSelectedBaselines([...tempSelectedBaselines]);
-    setBaselineModalVisible(false);
-  };
-
-  const handleBaselineModalCancel = () => {
-    setTempSelectedBaselines([...selectedBaselines]);
-    setBaselineModalVisible(false);
-  };
-
-  const handleSelectAllBaselines = (checked: boolean) => {
-    if (checked) {
-      setTempSelectedBaselines(mockDatasets.map(d => d.value));
-    } else {
-      setTempSelectedBaselines([]);
-    }
-  };
-
-  const removeSelectedBaseline = (value: string) => {
-    setSelectedBaselines(selectedBaselines.filter(item => item !== value));
   };
 
   const handleCancel = () => {
     setIsEditing(false);
     setEditingModel(null);
+    setCurrentStep(0);
     form.resetFields();
+  };
+
+  // 选择数据集
+  const selectDataset = (dataset?: Dataset) => {
+    if (datasetModalType === 'primary') {
+      if (dataset) {
+        form.setFieldsValue({
+          primaryDataset: {
+            id: dataset.id,
+            name: dataset.name,
+            alias: dataset.alias
+          }
+        });
+      }
+    } else {
+      // 处理多选基准数据集
+      selectedDatasetsInModal.forEach(ds => {
+        addAttachedDataset(ds);
+      });
+    }
+    setDatasetModalVisible(false);
+    setSelectedDatasetInModal(null);
+    setSelectedDatasetsInModal([]);
+  };
+
+  // 添加基准数据集
+  const addAttachedDataset = (dataset: Dataset) => {
+    if (!attachedDatasets.find(d => d.datasetId === dataset.id)) {
+      const newAttachedDataset: AttachedDatasetConfig = {
+        id: Date.now().toString() + Math.random(),
+        datasetId: dataset.id,
+        datasetName: dataset.name,
+        alias: dataset.alias,
+        joinType: 'LEFT',
+        joinConditions: [],
+        joinPreview: ''
+      };
+      setAttachedDatasets([...attachedDatasets, newAttachedDataset]);
+    }
+    setDatasetModalVisible(false);
+  };
+
+
+
+
+
+  // 移除附加数据集
+  const removeAttachedDataset = (id: string) => {
+    const datasetToRemove = attachedDatasets.find(d => d.id === id);
+    setAttachedDatasets(attachedDatasets.filter(d => d.id !== id));
+    // 同时移除相关的JOIN配置
+    if (datasetToRemove) {
+      setJoins(joins.filter(j => j.targetAlias !== datasetToRemove.alias));
+    }
+  };
+
+  // 添加JOIN配置
+  const addJoinConfig = (joinConfig: Omit<JoinConfig, 'id'>) => {
+    const newJoin: JoinConfig = {
+      ...joinConfig,
+      id: Date.now().toString()
+    };
+    setJoins([...joins, newJoin]);
+    setJoinModalVisible(false);
+  };
+
+  // 添加显示属性
+  const addDisplayAttribute = (attr: Omit<DisplayAttribute, 'id'>) => {
+    const newAttr: DisplayAttribute = {
+      ...attr,
+      id: Date.now().toString()
+    };
+    setDisplayAttributes([...displayAttributes, newAttr]);
+    setDisplayAttrModalVisible(false);
+  };
+
+
+
+
+
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 0: // 基本信息
+        return (
+          <Card title="基本信息">
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  label="模型名称"
+                  name="modelName"
+                  rules={[{ required: true, message: '请输入模型名称' }]}
+                >
+                  <Input placeholder="请输入模型名称" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  label="模型编码"
+                  name="modelCode"
+                  rules={[{ required: true, message: '请输入模型编码' }]}
+                >
+                  <Input placeholder="mdl_vendor_compare" />
+                </Form.Item>
+              </Col>
+            </Row>
+            
+            <Form.Item label="标签" name="tags">
+              <Select mode="tags" placeholder="添加标签">
+                <Option value="同品多商">同品多商</Option>
+                <Option value="历史对比">历史对比</Option>
+              </Select>
+            </Form.Item>
+
+            <Form.Item label="描述" name="description">
+              <TextArea rows={3} placeholder="请输入模型描述" />
+            </Form.Item>
+
+            <Form.Item label="启用" name="enabled" valuePropName="checked" initialValue={true}>
+              <Switch />
+            </Form.Item>
+            
+            <Alert
+              message="提示：模型定义结构与标准，计算公式与基准选择将在比价方案里配置。"
+              type="info"
+              showIcon
+              style={{ marginTop: 16 }}
+            />
+          </Card>
+        );
+
+      case 1: // 数据源绑定
+        return (
+          <Card title="选择数据集">
+            {/* 主数据集区块 */}
+            <Card 
+              size="small" 
+              title={<Text strong>比价数据集</Text>} 
+              style={{ marginBottom: 16 }}
+              bodyStyle={{ padding: '16px' }}
+            >
+              <Row gutter={16} align="middle">
+                <Col span={3}>
+                  <Text>选择比价数据集</Text>
+                </Col>
+                <Col span={9}>
+                  <Form.Item
+                    name={['primaryDataset', 'id']}
+                    rules={[{ required: true, message: '请选择比价数据集' }]}
+                    style={{ margin: 0 }}
+                  >
+                    <Button 
+                      style={{ width: '100%', textAlign: 'left' }}
+                      onClick={() => {
+                        setDatasetModalVisible(true);
+                        setDatasetModalType('primary');
+                      }}
+                    >
+                      {form.getFieldValue(['primaryDataset', 'id']) ? 
+                        mockDatasets.find(d => d.id === form.getFieldValue(['primaryDataset', 'id']))?.name
+                        : '选择比价数据集'
+                      }
+                    </Button>
+                  </Form.Item>
+                </Col>
+                <Col span={2}>
+                  <Text>别名</Text>
+                </Col>
+                <Col span={10}>
+                  <Form.Item 
+                    name={['primaryDataset', 'alias']} 
+                    rules={[
+                      { required: true, message: '请输入别名' },
+                      { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: '别名必须以字母开头，只能包含字母、数字和下划线' }
+                    ]}
+                    style={{ margin: 0 }}
+                  >
+                    <Input 
+                      placeholder="输入别名" 
+                      onChange={(e) => {
+                        const alias = e.target.value;
+                        const datasetId = form.getFieldValue(['primaryDataset', 'id']);
+                        if (datasetId) {
+                          setPrimaryDataset({ datasetId, alias });
+                        }
+                      }}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </Card>
+
+            {/* 基准数据集区域 */}
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text strong>基准数据集</Text>
+              <Button 
+                type="dashed" 
+                icon={<PlusOutlined />}
+                onClick={() => {
+                  setDatasetModalVisible(true);
+                  setDatasetModalType('attached');
+                }}
+              >
+                选择基准数据集
+              </Button>
+            </div>
+
+            {/* 兼容原有基准数据集显示 */}
+            {attachedDatasets.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <Table
+                  dataSource={attachedDatasets}
+                  rowKey="id"
+                  pagination={false}
+                  size="small"
+                  style={{ marginTop: 8 }}
+                  columns={[
+                    {
+                      title: '基准数据集名称',
+                      dataIndex: 'datasetName',
+                      key: 'datasetName',
+                      width: 200,
+                    },
+                    {
+                      title: '数据集别名',
+                      key: 'alias',
+                      width: 150,
+                      render: (_, record: AttachedDatasetConfig) => (
+                        <Input
+                          value={record.alias}
+                          placeholder="输入别名"
+                          onChange={(e) => {
+                            const newAttachedDatasets = attachedDatasets.map(item => 
+                              item.id === record.id ? { ...item, alias: e.target.value } : item
+                            );
+                            setAttachedDatasets(newAttachedDatasets);
+                          }}
+                        />
+                      ),
+                    },
+                    {
+                      title: '连接类型',
+                      key: 'joinType',
+                      width: 120,
+                      render: (_, record: AttachedDatasetConfig) => (
+                        <Select
+                          value={record.joinType}
+                          style={{ width: '100%' }}
+                          onChange={(value) => {
+                            const newAttachedDatasets = attachedDatasets.map(item => 
+                              item.id === record.id ? { ...item, joinType: value } : item
+                            );
+                            setAttachedDatasets(newAttachedDatasets);
+                          }}
+                        >
+                          <Option value="INNER">INNER JOIN</Option>
+                          <Option value="LEFT">LEFT JOIN</Option>
+                          <Option value="RIGHT">RIGHT JOIN</Option>
+                        </Select>
+                      ),
+                    },
+                    {
+                      title: '关联条件',
+                      key: 'joinConditions',
+                      width: 200,
+                      render: (_, record: AttachedDatasetConfig) => (
+                        <Select
+                          mode="multiple"
+                          value={record.joinConditions}
+                          placeholder="选择关联字段"
+                          style={{ width: '100%' }}
+                          onChange={(value) => {
+                            const preview = value.map(field => `a.${field} = ${record.alias}.${field}`).join(' AND ');
+                            const newAttachedDatasets = attachedDatasets.map(item => 
+                              item.id === record.id ? { ...item, joinConditions: value, joinPreview: preview } : item
+                            );
+                            setAttachedDatasets(newAttachedDatasets);
+                          }}
+                        >
+                          {mockFields.map(field => (
+                            <Option key={field.value} value={field.value}>
+                              {field.label} ({field.value})
+                            </Option>
+                          ))}
+                        </Select>
+                      ),
+                    },
+                    {
+                      title: '关联条件预览',
+                      key: 'joinPreview',
+                      width: 250,
+                      render: (_, record: AttachedDatasetConfig) => (
+                        <Text code style={{ fontSize: '12px' }}>
+                          {record.joinPreview || '请选择关联条件'}
+                        </Text>
+                      ),
+                    },
+                    {
+                      title: '操作',
+                      key: 'action',
+                      width: 120,
+                      render: (_, record: AttachedDatasetConfig) => (
+                        <Space size="small">
+                          <Button type="link" size="small">
+                            校验
+                          </Button>
+                          <Button 
+                            type="link" 
+                            size="small" 
+                            danger
+                            onClick={() => removeAttachedDataset(record.id)}
+                          >
+                            删除
+                          </Button>
+                        </Space>
+                      ),
+                    },
+                  ]}
+                />
+              </div>
+            )}
+          </Card>
+        );
+
+      case 2: // 比价对象设置
+        return (
+          <Card title="比价对象设置">
+            {/* 比价对象 */}
+            <Form.Item
+              label="请选择比价对象"
+              name="compareKey"
+              rules={[{ required: true, message: '请选择比价对象字段' }]}
+              style={{ marginBottom: 24 }}
+            >
+              <Select mode="multiple" placeholder="选择比价对象字段（相同产品或者同类产品，比一个或者多个字段）">
+                {mockFields.map(field => (
+                  <Option key={field.value} value={field.value}>
+                    {field.value} | {field.label}
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item>
+
+            <Divider />
+
+            {/* 比价指标 */}
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text strong>比价指标（来自指标库，数据范围为映射了主数据集的指标）</Text>
+                <Button 
+                  type="dashed" 
+                  icon={<PlusOutlined />} 
+                  onClick={() => setIndicatorModalVisible(true)}
+                >
+                  选择比价指标
+                </Button>
+              </div>
+              
+              {analysisIndicators.length > 0 && (
+                <Table
+                  size="small"
+                  dataSource={analysisIndicators}
+                  pagination={false}
+                  rowKey="libId"
+                  columns={[
+                    {
+                      title: '指标编码',
+                      dataIndex: 'libId',
+                      key: 'libId',
+                      width: 150,
+                    },
+                    {
+                      title: '指标名称',
+                      dataIndex: 'name',
+                      key: 'name',
+                      width: 120,
+                    },
+                    {
+                      title: '关联数据集',
+                      dataIndex: 'datasetAlias',
+                      key: 'datasetAlias',
+                      width: 100,
+                      render: (alias: string) => {
+                        const dataset = mockDatasets.find(d => d.alias === alias);
+                        return dataset ? `${dataset.name}(${alias})` : alias;
+                      }
+                    },
+                    {
+                      title: '关联字段',
+                      key: 'field',
+                      width: 100,
+                      render: () => 'price' // 假设都是price字段，实际应该从数据中获取
+                    },
+                    {
+                      title: '聚合类型',
+                      dataIndex: 'aggregation',
+                      key: 'aggregation',
+                      width: 100,
+                    },
+                    {
+                      title: '指标单位',
+                      dataIndex: 'unit',
+                      key: 'unit',
+                      width: 80,
+                    },
+                    {
+                      title: '操作',
+                      key: 'action',
+                      width: 80,
+                      render: (_, record: AnalysisIndicator) => (
+                        <Button
+                          type="link"
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={() => {
+                            setAnalysisIndicators(prev => prev.filter(item => item.libId !== record.libId));
+                          }}
+                        >
+                          删除
+                        </Button>
+                      ),
+                    },
+                  ]}
+                />
+              )}
+            </div>
+
+            <Divider />
+
+            {/* 比价维度 */}
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text strong>比价维度（横向对比的主维度）</Text>
+                <Button 
+                  type="dashed" 
+                  icon={<PlusOutlined />}
+                  onClick={() => setDimensionModalVisible(true)}
+                >
+                  选择比价维度
+                </Button>
+              </div>
+              
+              {/* 显示选中的维度字段 */}
+              {analysisDimensions.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  {analysisDimensions.map((dimension, index) => (
+                    <Tag
+                      key={index}
+                      closable
+                      onClose={() => {
+                        setAnalysisDimensions(prev => prev.filter((_, i) => i !== index));
+                      }}
+                      style={{ marginBottom: 4, marginRight: 4 }}
+                    >
+                      {dimension}
+                    </Tag>
+                  ))}
+                </div>
+              )}
+              
+              {analysisDimensions.length === 0 && (
+                <div style={{ color: '#999', fontSize: '12px', marginTop: 4 }}>
+                  请选择比价维度字段
+                </div>
+              )}
+            </div>
+
+            <Divider />
+
+            {/* 属性显示 */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text strong>显示属性（用于报表展示的附加字段，不参与聚合）</Text>
+                <Button 
+                  type="dashed" 
+                  icon={<PlusOutlined />} 
+                  onClick={() => setDisplayAttrModalVisible(true)}
+                >
+                  新增显示属性
+                </Button>
+              </div>
+              
+              {displayAttributes.length > 0 && (
+                <Table
+                  dataSource={displayAttributes}
+                  rowKey="id"
+                  pagination={false}
+                  size="small"
+                  style={{ marginBottom: 16 }}
+                  columns={[
+                    {
+                      title: '字段编码',
+                      dataIndex: 'field',
+                      key: 'field',
+                      width: 120,
+                    },
+                    {
+                      title: '字段名称',
+                      dataIndex: 'name',
+                      key: 'name',
+                      width: 150,
+                    },
+                    {
+                      title: '显示名称',
+                      dataIndex: 'displayName',
+                      key: 'displayName',
+                      width: 150,
+                      render: (text: string, record: DisplayAttribute, index: number) => (
+                        <Input
+                          value={text}
+                          onChange={(e) => {
+                            const newDisplayAttributes = [...displayAttributes];
+                            newDisplayAttributes[index].displayName = e.target.value;
+                            setDisplayAttributes(newDisplayAttributes);
+                          }}
+                          size="small"
+                        />
+                      ),
+                    },
+                    {
+                      title: '绑定字段',
+                      dataIndex: 'bindField',
+                      key: 'bindField',
+                      width: 150,
+                      render: (text: string, record: DisplayAttribute, index: number) => (
+                        <Select
+                          value={text}
+                          onChange={(value) => {
+                            const newDisplayAttributes = [...displayAttributes];
+                            newDisplayAttributes[index].bindField = value;
+                            setDisplayAttributes(newDisplayAttributes);
+                          }}
+                          size="small"
+                          style={{ width: '100%' }}
+                          placeholder="选择绑定字段"
+                        >
+                          {/* 这里应该是主数据集的字段选项 */}
+                          <Option value="price">price</Option>
+                          <Option value="name">name</Option>
+                          <Option value="category">category</Option>
+                          <Option value="brand">brand</Option>
+                        </Select>
+                      ),
+                    },
+                    {
+                      title: '操作',
+                      key: 'action',
+                      width: 80,
+                      render: (text: any, record: DisplayAttribute, index: number) => (
+                        <Button
+                          type="link"
+                          danger
+                          size="small"
+                          onClick={() => {
+                            const newDisplayAttributes = displayAttributes.filter((_, i) => i !== index);
+                            setDisplayAttributes(newDisplayAttributes);
+                          }}
+                        >
+                          删除
+                        </Button>
+                      ),
+                    },
+                  ]}
+                />
+              )}
+              
+              <Alert
+                message="说明：属性显示只做附加列，不参与聚合与计算，不改变汇总粒度。"
+                type="info"
+                showIcon
+                style={{ marginTop: 8 }}
+              />
+            </div>
+
+            <Divider />
+
+            {/* 查询条件配置 */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text strong>查询条件配置</Text>
+                <Button 
+                  type="dashed" 
+                  icon={<PlusOutlined />} 
+                  onClick={() => setQueryConditionModalVisible(true)}
+                >
+                  添加查询条件
+                </Button>
+              </div>
+              
+              {queryConditions.length > 0 && (
+                <Table
+                  dataSource={queryConditions}
+                  rowKey="id"
+                  pagination={false}
+                  size="small"
+                  style={{ marginBottom: 16 }}
+                  columns={[
+                    {
+                      title: '字段编码',
+                      dataIndex: 'fieldCode',
+                      key: 'fieldCode',
+                      width: 120,
+                    },
+                    {
+                      title: '字段名称',
+                      dataIndex: 'fieldName',
+                      key: 'fieldName',
+                      width: 150,
+                    },
+                    {
+                      title: '组件类型',
+                      dataIndex: 'componentType',
+                      key: 'componentType',
+                      width: 150,
+                      render: (text: string, record: QueryCondition, index: number) => (
+                        <Select
+                          value={text}
+                          onChange={(value) => {
+                            const newQueryConditions = [...queryConditions];
+                            newQueryConditions[index].componentType = value;
+                            setQueryConditions(newQueryConditions);
+                          }}
+                          size="small"
+                          style={{ width: '100%' }}
+                        >
+                          <Option value="弹框单选">弹框单选</Option>
+                          <Option value="弹框多选">弹框多选</Option>
+                          <Option value="下拉单选">下拉单选</Option>
+                          <Option value="日期">日期</Option>
+                          <Option value="时间">时间</Option>
+                        </Select>
+                      ),
+                    },
+                    {
+                      title: '操作',
+                      key: 'action',
+                      width: 80,
+                      render: (text: any, record: QueryCondition, index: number) => (
+                        <Button
+                          type="link"
+                          danger
+                          size="small"
+                          onClick={() => {
+                            const newQueryConditions = queryConditions.filter((_, i) => i !== index);
+                            setQueryConditions(newQueryConditions);
+                          }}
+                        >
+                          删除
+                        </Button>
+                      ),
+                    },
+                  ]}
+                />
+              )}
+              
+              <Alert
+                message="说明：查询条件配置用于生成前端查询界面的筛选条件组件。"
+                type="info"
+                showIcon
+                style={{ marginTop: 8 }}
+              />
+            </div>
+          </Card>
+        );
+
+      case 3: // 选择基准对象
+        return (
+          <Card title="选择基准对象">
+            {/* 基准指标选择 */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text strong>基准指标（从关联基准数据集的指标库中选择）</Text>
+                <Button 
+                  type="dashed" 
+                  icon={<PlusOutlined />} 
+                  onClick={() => setBaselineIndicatorModalVisible(true)}
+                >
+                  选择基准指标
+                </Button>
+              </div>
+              
+              {baselineCandidates.length > 0 && (
+                <Table
+                  size="small"
+                  dataSource={baselineCandidates}
+                  pagination={false}
+                  rowKey="libId"
+                  columns={[
+                    {
+                      title: '指标编码',
+                      dataIndex: 'libId',
+                      key: 'libId',
+                      width: 150,
+                    },
+                    {
+                      title: '指标名称',
+                      dataIndex: 'name',
+                      key: 'name',
+                      width: 120,
+                    },
+                    {
+                      title: '关联数据集',
+                      dataIndex: 'datasetAlias',
+                      key: 'datasetAlias',
+                      width: 100,
+                      render: (alias: string) => {
+                        const dataset = mockDatasets.find(d => d.alias === alias);
+                        return dataset ? `${dataset.name}(${alias})` : alias;
+                      }
+                    },
+                    {
+                      title: '关联字段',
+                      key: 'field',
+                      width: 100,
+                      render: () => 'price' // 假设都是price字段，实际应该从数据中获取
+                    },
+                    {
+                      title: '聚合类型',
+                      dataIndex: 'aggregation',
+                      key: 'aggregation',
+                      width: 100,
+                    },
+                    {
+                      title: '指标单位',
+                      dataIndex: 'unit',
+                      key: 'unit',
+                      width: 80,
+                    },
+                    {
+                      title: '操作',
+                      key: 'action',
+                      width: 80,
+                      render: (_, record: BaselineCandidate) => (
+                        <Button
+                          type="link"
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={() => {
+                            setBaselineCandidates(prev => prev.filter(item => item.libId !== record.libId));
+                          }}
+                        >
+                          删除
+                        </Button>
+                      ),
+                    },
+                  ]}
+                />
+              )}
+            </div>
+            
+            <Alert
+               message="说明：基准候选支持多选和全选，指标来自指标库，数据范围为映射了辅助数据集的指标。"
+               type="info"
+               showIcon
+               style={{ marginTop: 16 }}
+             />
+
+            <Divider />
+
+            {/* 基准查询条件配置 */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <Text strong>基准查询条件配置</Text>
+              </div>
+              
+              {baselineCandidates.length === 0 ? (
+                <Alert
+                  message="请先选择基准指标，然后为每个基准指标配置查询条件"
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                />
+              ) : (
+                <div>
+                  {baselineCandidates.map((indicator, index) => {
+                    const indicatorConditions = baselineQueryConditions.filter(c => c.baselineIndicatorId === indicator.libId);
+                    return (
+                      <Card 
+                        key={indicator.libId} 
+                        size="small" 
+                        style={{ marginBottom: 16 }}
+                        title={
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>{indicator.name} ({indicator.libId})</span>
+                            <Button 
+                              type="dashed" 
+                              size="small"
+                              icon={<PlusOutlined />}
+                              onClick={() => {
+                                setCurrentBaselineIndicatorId(indicator.libId);
+                                setBaselineQueryConditionModalVisible(true);
+                              }}
+                            >
+                              添加查询条件
+                            </Button>
+                          </div>
+                        }
+                      >
+                        {indicatorConditions.length > 0 ? (
+                          <Table
+                            dataSource={indicatorConditions}
+                            rowKey="id"
+                            pagination={false}
+                            size="small"
+                            columns={[
+                              {
+                                title: '字段编码',
+                                dataIndex: 'fieldCode',
+                                key: 'fieldCode',
+                                width: 120,
+                              },
+                              {
+                                title: '字段名称',
+                                dataIndex: 'fieldName',
+                                key: 'fieldName',
+                                width: 150,
+                              },
+                              {
+                                title: '组件类型',
+                                dataIndex: 'componentType',
+                                key: 'componentType',
+                                width: 150,
+                                render: (text: string, record: BaselineQueryCondition, conditionIndex: number) => {
+                                  const globalIndex = baselineQueryConditions.findIndex(c => c.id === record.id);
+                                  return (
+                                    <Select
+                                      value={text}
+                                      onChange={(value) => {
+                                        const newConditions = [...baselineQueryConditions];
+                                        newConditions[globalIndex].componentType = value;
+                                        setBaselineQueryConditions(newConditions);
+                                      }}
+                                      size="small"
+                                      style={{ width: '100%' }}
+                                    >
+                                      <Option value="弹框单选">弹框单选</Option>
+                                      <Option value="弹框多选">弹框多选</Option>
+                                      <Option value="下拉单选">下拉单选</Option>
+                                      <Option value="日期">日期</Option>
+                                      <Option value="时间">时间</Option>
+                                    </Select>
+                                  );
+                                },
+                              },
+                              {
+                                title: '操作',
+                                key: 'action',
+                                width: 80,
+                                render: (text: any, record: BaselineQueryCondition) => (
+                                  <Button
+                                    type="link"
+                                    danger
+                                    size="small"
+                                    onClick={() => {
+                                      const newConditions = baselineQueryConditions.filter(c => c.id !== record.id);
+                                      setBaselineQueryConditions(newConditions);
+                                    }}
+                                  >
+                                    删除
+                                  </Button>
+                                ),
+                              },
+                            ]}
+                          />
+                        ) : (
+                          <div style={{ textAlign: 'center', color: '#999', padding: '20px 0' }}>
+                            暂无查询条件，点击上方按钮添加
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+              
+              <Alert
+                message="说明：为每个基准指标配置查询条件，用于在查询时筛选对应的基准数据。"
+                type="info"
+                showIcon
+                style={{ marginTop: 8 }}
+              />
+            </div>
+          </Card>
+        );
+
+      case 4: // 预览与校验
+        return (
+          <Card title="预览与校验">
+            <div style={{ marginBottom: 24 }}>
+              <Text strong>校验结果：</Text>
+              <div style={{ marginTop: 8 }}>
+                <div style={{ marginBottom: 8 }}>
+                  <CheckOutlined style={{ color: '#52c41a', marginRight: 8 }} />
+                  <Text>分析指标均来自主数据集</Text>
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <CheckOutlined style={{ color: '#52c41a', marginRight: 8 }} />
+                  <Text>基准候选均绑定基准数据集</Text>
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <CheckOutlined style={{ color: '#52c41a', marginRight: 8 }} />
+                  <Text>比价对象键可解析</Text>
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <CheckOutlined style={{ color: '#52c41a', marginRight: 8 }} />
+                  <Text>显示属性正确挂载到对象粒度</Text>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Text strong>SQL预览：</Text>
+              <div style={{ marginTop: 8, padding: 16, backgroundColor: '#f5f5f5', borderRadius: 4 }}>
+                <pre style={{ margin: 0, fontSize: 12 }}>
+{`SELECT 
+  a.item_id,
+  a.spec,
+  a.brand,
+  a.vendor_id,
+  a.price as agreement_price,
+  h.min_price as hist_min_price,
+  m.ref_price as market_ref_price
+FROM ds_agreement_price a
+LEFT JOIN ds_po_hist h ON a.item_id = h.item_id AND a.spec = h.spec AND a.brand = h.brand
+LEFT JOIN ds_market m ON a.item_id = m.item_id AND a.brand = m.brand
+WHERE a.trade_date >= '2024-01-01'
+GROUP BY a.item_id, a.spec, a.brand, a.vendor_id`}
+                </pre>
+              </div>
+            </div>
+          </Card>
+        );
+
+      default:
+        return null;
+    }
   };
 
   if (isEditing) {
@@ -162,365 +1385,615 @@ const PriceModel2Management: React.FC = () => {
             <Button type="primary" icon={<SaveOutlined />} onClick={handleSave}>
               保存
             </Button>
-            <Button icon={<SendOutlined />} onClick={handlePublish}>
+            <Button icon={<SendOutlined />}>
               发布
             </Button>
           </Space>
         </div>
 
+        {/* Steps */}
+        <Steps
+          current={currentStep}
+          items={steps}
+          style={{ marginBottom: 24 }}
+        />
+
         {/* Form */}
         <Form form={form} layout="vertical" style={{ maxWidth: '1200px' }}>
-           <Tabs 
-             activeKey={currentStep}
-             onChange={setCurrentStep}
-             items={[
-               {
-                 key: '1',
-                 label: '1. 基本信息',
-                 children: (
-                   <Card>
-                     <Row gutter={16}>
-                       <Col span={12}>
-                         <Form.Item
-                           label="模型名称"
-                           name="modelName"
-                           rules={[{ required: true, message: '请输入模型名称' }]}
-                         >
-                           <Input placeholder="请输入模型名称" />
-                         </Form.Item>
-                       </Col>
-                       <Col span={12}>
-                         <Form.Item
-                           label="模型编码"
-                           name="modelCode"
-                           rules={[{ required: true, message: '请输入模型编码' }]}
-                         >
-                           <Input placeholder="mdl_vendor_price_compare" />
-                         </Form.Item>
-                       </Col>
-                     </Row>
-                     
-                     <Form.Item label="场景标签" name="tags">
-                       <Select mode="tags" placeholder="添加场景标签">
-                         <Option value="同品多商">同品多商</Option>
-                         <Option value="历史对比">历史对比</Option>
-                       </Select>
-                     </Form.Item>
+          {renderStepContent()}
+          
+          {/* Navigation */}
+          <div style={{ textAlign: 'right', marginTop: 24 }}>
+            <Space>
+              {currentStep > 0 && (
+                <Button icon={<LeftOutlined />} onClick={handlePrev}>
+                  上一步
+                </Button>
+              )}
+              {currentStep < steps.length - 1 && (
+                <Button type="primary" icon={<RightOutlined />} onClick={handleNext}>
+                  下一步
+                </Button>
+              )}
+              {currentStep === steps.length - 1 && (
+                <Button type="primary" icon={<SaveOutlined />} onClick={handleSave}>
+                  保存模型
+                </Button>
+              )}
+            </Space>
+          </div>
+        </Form>
 
-                     <Form.Item label="描述" name="description">
-                       <TextArea rows={3} placeholder="请输入模型描述" />
-                     </Form.Item>
+        {/* Modals */}
+        <Modal
+            title={datasetModalType === 'primary' ? '选择比价数据集' : '选择基准数据集'}
+            open={datasetModalVisible}
+            onCancel={() => {
+              setDatasetModalVisible(false);
+              setSelectedDatasetInModal(null);
+              setSelectedDatasetsInModal([]);
+            }}
+          onOk={() => {
+            if (datasetModalType === 'primary') {
+              if (selectedDatasetInModal) {
+                selectDataset(selectedDatasetInModal);
+              }
+            } else {
+              if (selectedDatasetsInModal.length > 0) {
+                selectDataset();
+              }
+            }
+          }}
+          okText="确认添加"
+          cancelText="取消"
+          width={800}
+        >
+          <div style={{ marginBottom: 16 }}>
+            从数据模型中选择要添加的数据集（已选择 {datasetModalType === 'primary' ? (selectedDatasetInModal ? 1 : 0) : selectedDatasetsInModal.length} 个数据集）：
+          </div>
+          <Table
+            dataSource={datasetModalType === 'primary' ? mockDatasets : mockDatasets.filter(d => 
+              !attachedDatasets.find(ad => ad.datasetId === d.id)
+            )}
+            rowKey="id"
+            pagination={false}
+            size="small"
+            rowSelection={{
+              type: datasetModalType === 'primary' ? 'radio' : 'checkbox',
+              selectedRowKeys: datasetModalType === 'primary' 
+                ? (selectedDatasetInModal ? [selectedDatasetInModal.id] : [])
+                : selectedDatasetsInModal.map(d => d.id),
+              onSelect: (record: Dataset, selected: boolean) => {
+                if (datasetModalType === 'primary') {
+                  setSelectedDatasetInModal(selected ? record : null);
+                } else {
+                  if (selected) {
+                    setSelectedDatasetsInModal(prev => [...prev, record]);
+                  } else {
+                    setSelectedDatasetsInModal(prev => prev.filter(d => d.id !== record.id));
+                  }
+                }
+              },
+              onSelectAll: datasetModalType === 'attached' ? (selected: boolean, selectedRows: Dataset[], changeRows: Dataset[]) => {
+                if (selected) {
+                  setSelectedDatasetsInModal(prev => {
+                    const existingIds = prev.map(d => d.id);
+                    const newDatasets = changeRows.filter(d => !existingIds.includes(d.id));
+                    return [...prev, ...newDatasets];
+                  });
+                } else {
+                  const changeIds = changeRows.map(d => d.id);
+                  setSelectedDatasetsInModal(prev => prev.filter(d => !changeIds.includes(d.id)));
+                }
+              } : undefined,
+            }}
+            columns={[
+              {
+                title: '数据集名称',
+                dataIndex: 'name',
+                key: 'name',
+                width: 200,
+              },
+              {
+                title: '数据集编码',
+                dataIndex: 'id',
+                key: 'id',
+                width: 150,
+              },
+              {
+                title: '来源模型',
+                key: 'sourceModel',
+                width: 150,
+                render: () => 'DWD层数据模型',
+              },
+              {
+                title: '分析主题',
+                key: 'analysis',
+                width: 120,
+                render: (_, record: Dataset) => {
+                  const analysisMap: { [key: string]: string } = {
+                    'ds_agreement_price': '采购比价分析',
+                    'ds_po_hist': '供应商绩效分析',
+                    'ds_market': '历史价格趋势分析',
+                    'ds_bid': '历史价格趋势分析'
+                  };
+                  return (
+                    <Tag color="green">{analysisMap[record.id] || '供应商价格分析'}</Tag>
+                  );
+                },
+              },
+            ]}
+          />
+        </Modal>
 
-                     <Form.Item label="启用状态" name="status" initialValue="enabled">
-                       <Radio.Group>
-                         <Radio value="disabled">停用</Radio>
-                         <Radio value="enabled">启用</Radio>
-                       </Radio.Group>
-                     </Form.Item>
-                     
-                     <div style={{ textAlign: 'right', marginTop: '24px' }}>
-                        <Button type="primary" icon={<RightOutlined />} onClick={handleNext}>
-                          下一步
-                        </Button>
-                      </div>
-                   </Card>
-                 )
-               },
-               {
-                 key: '2',
-                 label: '2. 数据绑定',
-                 children: (
-                   <Card>
-                     <Form.Item
-                       label="选择比价数据集（单选，主角：从这里取'被比较'的指标）"
-                       name="mainDataset"
-                       rules={[{ required: true, message: '请选择比价数据集' }]}
-                     >
-                       <Radio.Group>
-                         {mockDatasets.map(dataset => (
-                           <Radio key={dataset.value} value={dataset.value} style={{ display: 'block', marginBottom: '8px' }}>
-                             {dataset.label}
-                           </Radio>
-                         ))}
-                       </Radio.Group>
-                     </Form.Item>
+        {/* 新增对齐Modal */}
+        <Modal
+          title="新增对齐"
+          open={joinModalVisible}
+          onCancel={() => setJoinModalVisible(false)}
+          onOk={() => {
+            // 这里可以添加表单验证和提交逻辑
+            const newJoin: JoinConfig = {
+              id: Date.now().toString(),
+              targetAlias: 'h', // 示例值
+              type: 'LEFT',
+              on: 'a.item_id = h.item_id',
+              uniqueCheck: true
+            };
+            setJoins([...joins, newJoin]);
+            setJoinModalVisible(false);
+          }}
+          width={600}
+        >
+          <Form layout="vertical">
+            <Form.Item label="目标数据集" required>
+              <Select placeholder="选择目标数据集">
+                {attachedDatasets.map(dataset => (
+                  <Option key={dataset.id} value={dataset.alias}>
+                    {dataset.datasetName} ({dataset.alias})
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item>
+            
+            <Form.Item label="连接类型" required>
+              <Radio.Group defaultValue="LEFT">
+                <Radio value="LEFT">LEFT JOIN</Radio>
+                <Radio value="RIGHT">RIGHT JOIN</Radio>
+                <Radio value="INNER">INNER JOIN</Radio>
+              </Radio.Group>
+            </Form.Item>
+            
+            <Form.Item label="ON条件" required>
+              <Input.TextArea 
+                placeholder="例如: a.item_id = h.item_id AND a.vendor_id = h.vendor_id"
+                rows={3}
+              />
+            </Form.Item>
+            
+            <Form.Item>
+              <Checkbox defaultChecked>
+                校验唯一性
+              </Checkbox>
+            </Form.Item>
+          </Form>
+        </Modal>
 
-                     <Divider />
+        {/* 指标库选择Modal */}
+        <Modal
+          title="选择比价指标"
+          open={indicatorModalVisible}
+          onCancel={() => {
+            setIndicatorModalVisible(false);
+            setSelectedIndicators([]);
+          }}
+          onOk={() => {
+            // 添加选中的指标到比价指标列表
+            const newIndicators = mockIndicators
+              .filter(indicator => selectedIndicators.includes(indicator.libId))
+              .map(indicator => ({
+                libId: indicator.libId,
+                name: indicator.name,
+                datasetAlias: indicator.datasetAlias,
+                unit: indicator.unit,
+                aggregation: indicator.aggregation
+              }));
+            setAnalysisIndicators([...analysisIndicators, ...newIndicators]);
+            setIndicatorModalVisible(false);
+            setSelectedIndicators([]);
+          }}
+          width={800}
+        >
+          <Table
+            dataSource={mockIndicators}
+            rowKey="libId"
+            pagination={false}
+            size="small"
+            rowSelection={{
+              type: 'checkbox',
+              selectedRowKeys: selectedIndicators,
+              onChange: (selectedRowKeys) => {
+                setSelectedIndicators(selectedRowKeys as string[]);
+              },
+            }}
+            columns={[
+              {
+                title: '指标名称',
+                dataIndex: 'name',
+                key: 'name',
+                width: 200,
+              },
+              {
+                title: '指标ID',
+                dataIndex: 'libId',
+                key: 'libId',
+                width: 150,
+              },
+              {
+                title: '数据集',
+                dataIndex: 'datasetAlias',
+                key: 'datasetAlias',
+                width: 100,
+              },
+              {
+                title: '单位',
+                dataIndex: 'unit',
+                key: 'unit',
+                width: 80,
+              },
+              {
+                title: '聚合方式',
+                dataIndex: 'aggregation',
+                key: 'aggregation',
+                width: 100,
+              },
+            ]}
+          />
+        </Modal>
 
-                     <Form.Item
-                       label="选择基准数据集（可多选，参照物：从这里取'基准'指标）"
-                       name="baselineDatasets"
-                     >
-                       <div>
-                         <Button 
-                           type="dashed" 
-                           onClick={() => {
-                             setTempSelectedBaselines([...selectedBaselines]);
-                             setBaselineModalVisible(true);
-                           }}
-                           style={{ width: '100%', marginBottom: '16px' }}
-                         >
-                           选择基准数据集
-                         </Button>
-                         
-                         {selectedBaselines.length > 0 && (
-                           <div>
-                             <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>已选基准数据集：</div>
-                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                               {selectedBaselines.map(value => {
-                                 const dataset = mockDatasets.find(d => d.value === value);
-                                 return (
-                                   <Tag 
-                                     key={value} 
-                                     closable 
-                                     onClose={() => removeSelectedBaseline(value)}
-                                   >
-                                     {dataset?.label}
-                                   </Tag>
-                                 );
-                               })}
-                             </div>
-                           </div>
-                         )}
-                       </div>
-                     </Form.Item>
-                     
-                     <Alert
-                       message="备注：后续'可选指标'会按上述选择自动过滤（只显示可取数的指标）"
-                       type="info"
-                       showIcon
-                     />
-                     
-                     <div style={{ textAlign: 'right', marginTop: '24px' }}>
-                        <Space>
-                          <Button icon={<LeftOutlined />} onClick={handlePrev}>
-                            上一步
-                          </Button>
-                          <Button type="primary" icon={<RightOutlined />} onClick={handleNext}>
-                            下一步
-                          </Button>
-                        </Space>
-                      </div>
-                   </Card>
-                 )
-               },
-               {
-                 key: '3',
-                 label: '3. 对象与维度配置',
-                 children: (
-                   <Card>
-                     <Row gutter={16}>
-                       <Col span={12}>
-                         <Form.Item
-                           label="比价对象（定义'按什么实体比较'）"
-                           name="compareObject"
-                           rules={[{ required: true, message: '请选择比价对象' }]}
-                         >
-                           <Select placeholder="选择比价对象字段">
-                             {mockFields.map(field => (
-                               <Option key={field.value} value={field.value}>
-                                 {field.value} | {field.label}
-                               </Option>
-                             ))}
-                           </Select>
-                         </Form.Item>
-                       </Col>
-                       <Col span={12}>
-                         <Form.Item
-                           label="分析对象（定义'谁作为分组/对照'）"
-                           name="analysisObject"
-                           rules={[{ required: true, message: '请选择分析对象' }]}
-                         >
-                           <Select placeholder="选择分析对象字段">
-                             {mockFields.map(field => (
-                               <Option key={field.value} value={field.value}>
-                                 {field.value} | {field.label}
-                               </Option>
-                             ))}
-                           </Select>
-                         </Form.Item>
-                       </Col>
-                     </Row>
+        {/* 基准指标选择Modal */}
+        <Modal
+          title="选择基准指标"
+          open={baselineIndicatorModalVisible}
+          onCancel={() => {
+            setBaselineIndicatorModalVisible(false);
+            setSelectedBaselineIndicators([]);
+          }}
+          onOk={() => {
+            // 添加选中的指标到基准指标列表
+            const newBaselineIndicators = mockIndicators
+              .filter(indicator => selectedBaselineIndicators.includes(indicator.libId))
+              .filter(indicator => attachedDatasets.some(ds => ds.alias === indicator.datasetAlias)) // 只显示关联基准数据集的指标
+              .map(indicator => ({
+                libId: indicator.libId,
+                name: indicator.name,
+                datasetAlias: indicator.datasetAlias,
+                unit: indicator.unit,
+                aggregation: indicator.aggregation
+              }));
+            setBaselineCandidates([...baselineCandidates, ...newBaselineIndicators]);
+            setBaselineIndicatorModalVisible(false);
+            setSelectedBaselineIndicators([]);
+          }}
+          width={800}
+        >
+          <Table
+            dataSource={mockIndicators.filter(indicator => attachedDatasets.some(ds => ds.alias === indicator.datasetAlias))} // 只显示关联基准数据集的指标
+            rowKey="libId"
+            pagination={false}
+            size="small"
+            rowSelection={{
+              type: 'checkbox',
+              selectedRowKeys: selectedBaselineIndicators,
+              onChange: (selectedRowKeys) => {
+                setSelectedBaselineIndicators(selectedRowKeys as string[]);
+              },
+            }}
+            columns={[
+              {
+                title: '指标名称',
+                dataIndex: 'name',
+                key: 'name',
+                width: 200,
+              },
+              {
+                title: '指标ID',
+                dataIndex: 'libId',
+                key: 'libId',
+                width: 150,
+              },
+              {
+                title: '数据集',
+                dataIndex: 'datasetAlias',
+                key: 'datasetAlias',
+                width: 100,
+              },
+              {
+                title: '单位',
+                dataIndex: 'unit',
+                key: 'unit',
+                width: 80,
+              },
+              {
+                title: '聚合方式',
+                dataIndex: 'aggregation',
+                key: 'aggregation',
+                width: 100,
+              },
+            ]}
+          />
+        </Modal>
 
-                     <Form.Item label="分析维度（可多选）" name="analysisDimensions">
-                       <Checkbox.Group>
-                         <Row>
-                           {mockFields.map(field => (
-                             <Col span={12} key={field.value}>
-                               <Checkbox value={field.value} style={{ marginBottom: '8px' }}>
-                                 {field.value} | {field.label}
-                               </Checkbox>
-                             </Col>
-                           ))}
-                         </Row>
-                       </Checkbox.Group>
-                     </Form.Item>
-                     
-                     <div style={{ textAlign: 'right', marginTop: '24px' }}>
-                        <Space>
-                          <Button icon={<LeftOutlined />} onClick={handlePrev}>
-                            上一步
-                          </Button>
-                          <Button type="primary" icon={<RightOutlined />} onClick={handleNext}>
-                            下一步
-                          </Button>
-                        </Space>
-                      </div>
-                   </Card>
-                 )
-               },
-               {
-                 key: '4',
-                 label: '4. 指标配置',
-                 children: (
-                   <Card>
-                     <Form.Item
-                       label="分析指标（来自指标库，必须映射到'比价数据集'）"
-                       name="analysisIndicators"
-                     >
-                       <Checkbox.Group>
-                         {mockIndicators.slice(0, 3).map(indicator => (
-                           <Checkbox key={indicator.value} value={indicator.value} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '8px', whiteSpace: 'nowrap' }}>
-                             <span style={{ wordBreak: 'keep-all', whiteSpace: 'nowrap' }}>
-                               {indicator.value} | {indicator.label}
-                             </span>
-                           </Checkbox>
-                         ))}
-                       </Checkbox.Group>
-                     </Form.Item>
+        {/* 新增属性Modal */}
+        <Modal
+          title="新增显示属性"
+          open={displayAttrModalVisible}
+          onCancel={() => {
+            setDisplayAttrModalVisible(false);
+            setSelectedDisplayAttrs([]);
+          }}
+          onOk={() => {
+            // 添加选中的属性到显示属性列表
+            const newAttrs = mockDisplayAttributes
+              .filter(attr => selectedDisplayAttrs.includes(attr.id))
+              .map(attr => ({
+                id: attr.id,
+                name: attr.name,
+                datasetAlias: attr.datasetAlias,
+                field: attr.field,
+                displayName: attr.displayName,
+                bindField: attr.bindField,
+                attachTo: attr.attachTo,
+                dedupe: attr.dedupe
+              }));
+            setDisplayAttributes([...displayAttributes, ...newAttrs]);
+            setDisplayAttrModalVisible(false);
+            setSelectedDisplayAttrs([]);
+          }}
+          width={800}
+        >
+          <Table
+            dataSource={mockDisplayAttributes}
+            rowKey="id"
+            pagination={false}
+            size="small"
+            rowSelection={{
+              type: 'checkbox',
+              selectedRowKeys: selectedDisplayAttrs,
+              onChange: (selectedRowKeys) => {
+                setSelectedDisplayAttrs(selectedRowKeys as string[]);
+              },
+              onSelectAll: (selected, selectedRows, changeRows) => {
+                if (selected) {
+                  setSelectedDisplayAttrs(mockDisplayAttributes.map(item => item.id));
+                } else {
+                  setSelectedDisplayAttrs([]);
+                }
+              },
+            }}
+            columns={[
+              {
+                title: '字段编码',
+                dataIndex: 'fieldCode',
+                key: 'fieldCode',
+                width: 150,
+              },
+              {
+                title: '字段名称',
+                dataIndex: 'name',
+                key: 'name',
+                width: 150,
+              },
+              {
+                title: '字段类型',
+                dataIndex: 'fieldType',
+                key: 'fieldType',
+                width: 120,
+              },
+            ]}
+          />
+        </Modal>
 
-                     <Divider />
+        {/* 查询条件配置Modal */}
+        <Modal
+          title="添加查询条件"
+          open={queryConditionModalVisible}
+          onCancel={() => {
+            setQueryConditionModalVisible(false);
+            setSelectedQueryConditions([]);
+          }}
+          onOk={() => {
+            // 添加选中的查询条件到查询条件列表
+            const newConditions = mockQueryConditionFields
+              .filter(field => selectedQueryConditions.includes(field.id))
+              .map(field => ({
+                id: field.id,
+                fieldCode: field.fieldCode,
+                fieldName: field.fieldName,
+                componentType: field.componentType
+              }));
+            setQueryConditions([...queryConditions, ...newConditions]);
+            setQueryConditionModalVisible(false);
+            setSelectedQueryConditions([]);
+          }}
+          width={800}
+        >
+          <Table
+            dataSource={mockQueryConditionFields}
+            rowKey="id"
+            pagination={false}
+            size="small"
+            rowSelection={{
+              type: 'checkbox',
+              selectedRowKeys: selectedQueryConditions,
+              onChange: (selectedRowKeys) => {
+                setSelectedQueryConditions(selectedRowKeys as string[]);
+              },
+              onSelectAll: (selected, selectedRows, changeRows) => {
+                if (selected) {
+                  setSelectedQueryConditions(mockQueryConditionFields.map(item => item.id));
+                } else {
+                  setSelectedQueryConditions([]);
+                }
+              },
+            }}
+            columns={[
+              {
+                title: '字段编码',
+                dataIndex: 'fieldCode',
+                key: 'fieldCode',
+                width: 150,
+              },
+              {
+                title: '字段名称',
+                dataIndex: 'fieldName',
+                key: 'fieldName',
+                width: 150,
+              },
+              {
+                title: '组件类型',
+                dataIndex: 'componentType',
+                key: 'componentType',
+                width: 120,
+              },
+            ]}
+          />
+        </Modal>
 
-                     <Form.Item
-                       label="基准指标候选（来自指标库，必须映射到'基准数据集'之一，可多选）"
-                       name="baselineCandidates"
-                     >
-                       <Checkbox.Group>
-                         {mockIndicators.slice(3).map(indicator => (
-                           <Checkbox key={indicator.value} value={indicator.value} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '8px', whiteSpace: 'nowrap' }}>
-                             <span style={{ wordBreak: 'keep-all', whiteSpace: 'nowrap' }}>
-                               {indicator.value} | {indicator.label}
-                             </span>
-                           </Checkbox>
-                         ))}
-                       </Checkbox.Group>
-                     </Form.Item>
-                     
-                     <Alert
-                       message="说明：真正使用哪一个基准指标，在'比价方案'中再单选"
-                       type="info"
-                       showIcon
-                     />
+        {/* 基准查询条件配置弹框 */}
+        <Modal
+          title={`为基准指标配置查询条件 - ${baselineCandidates.find(b => b.libId === currentBaselineIndicatorId)?.name || ''}`}
+          open={baselineQueryConditionModalVisible}
+          onCancel={() => {
+            setBaselineQueryConditionModalVisible(false);
+            setSelectedBaselineQueryConditions([]);
+          }}
+          onOk={() => {
+            // 添加选中的查询条件到基准查询条件列表
+            const newConditions = mockQueryConditionFields
+               .filter(field => selectedBaselineQueryConditions.includes(field.id))
+               .map(field => ({
+                 id: (Date.now() + Math.random()).toString(),
+                 baselineIndicatorId: currentBaselineIndicatorId,
+                 fieldCode: field.fieldCode,
+                 fieldName: field.fieldName,
+                 componentType: field.componentType
+               }));
+            setBaselineQueryConditions([...baselineQueryConditions, ...newConditions]);
+            setBaselineQueryConditionModalVisible(false);
+            setSelectedBaselineQueryConditions([]);
+          }}
+          width={800}
+        >
+          <Table
+            dataSource={mockQueryConditionFields}
+            rowKey="id"
+            pagination={false}
+            size="small"
+            rowSelection={{
+              type: 'checkbox',
+              selectedRowKeys: selectedBaselineQueryConditions,
+              onChange: (selectedRowKeys) => {
+                setSelectedBaselineQueryConditions(selectedRowKeys as string[]);
+              },
+              onSelectAll: (selected, selectedRows, changeRows) => {
+                if (selected) {
+                  setSelectedBaselineQueryConditions(mockQueryConditionFields.map(item => item.id));
+                } else {
+                  setSelectedBaselineQueryConditions([]);
+                }
+              },
+            }}
+            columns={[
+              {
+                title: '字段编码',
+                dataIndex: 'fieldCode',
+                key: 'fieldCode',
+                width: 150,
+              },
+              {
+                title: '字段名称',
+                dataIndex: 'fieldName',
+                key: 'fieldName',
+                width: 150,
+              },
+              {
+                title: '组件类型',
+                dataIndex: 'componentType',
+                key: 'componentType',
+                width: 120,
+              },
+            ]}
+          />
+        </Modal>
 
-                     <Divider />
+        {/* 比价维度选择弹框 */}
+        <Modal
+          title="选择比价维度"
+          open={dimensionModalVisible}
+          onOk={() => {
+            // 将选中的维度添加到analysisDimensions中
+            const newDimensions = selectedDimensions.filter(dim => !analysisDimensions.includes(dim));
+            setAnalysisDimensions(prev => [...prev, ...newDimensions]);
+            setDimensionModalVisible(false);
+            setSelectedDimensions([]);
+          }}
+          onCancel={() => {
+            setDimensionModalVisible(false);
+            setSelectedDimensions([]);
+          }}
+          width={800}
+        >
+          <div style={{ marginBottom: 16 }}>
+            <Checkbox
+              indeterminate={selectedDimensions.length > 0 && selectedDimensions.length < mockFields.length}
+              checked={selectedDimensions.length === mockFields.length}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setSelectedDimensions(mockFields.map(field => field.value));
+                } else {
+                  setSelectedDimensions([]);
+                }
+              }}
+            >
+              全选
+            </Checkbox>
+          </div>
+          <Table
+            dataSource={mockFields}
+            rowKey="value"
+            pagination={false}
+            size="small"
+            rowSelection={{
+              type: 'checkbox',
+              selectedRowKeys: selectedDimensions,
+              onChange: (selectedRowKeys) => {
+                setSelectedDimensions(selectedRowKeys as string[]);
+              },
+            }}
+            columns={[
+              {
+                title: '字段名称',
+                dataIndex: 'value',
+                key: 'value',
+                width: 150,
+              },
+              {
+                title: '字段描述',
+                dataIndex: 'label',
+                key: 'label',
+                width: 200,
+              },
+              {
+                title: '数据类型',
+                key: 'type',
+                width: 100,
+                render: () => 'VARCHAR' // 假设数据类型
+              },
+            ]}
+          />
+        </Modal>
 
-                     <div>
-                       <Text strong>计算指标（可选；模型级复用）</Text>
-                       <div style={{ marginTop: '8px' }}>
-                         <Button icon={<PlusOutlined />} size="small">
-                           新增计算指标
-                         </Button>
-                       </div>
-                     </div>
-                     
-                     <div style={{ textAlign: 'right', marginTop: '24px' }}>
-                        <Space>
-                          <Button icon={<LeftOutlined />} onClick={handlePrev}>
-                            上一步
-                          </Button>
-                          <Button type="primary" icon={<RightOutlined />} onClick={handleNext}>
-                            下一步
-                          </Button>
-                        </Space>
-                      </div>
-                   </Card>
-                 )
-               },
-               {
-                 key: '5',
-                 label: '5. 校验与预览',
-                 children: (
-                   <Card>
-                     <div style={{ marginBottom: '16px' }}>
-                       <Text strong>校验：</Text>
-                       <div style={{ marginTop: '8px' }}>
-                         <div style={{ marginBottom: '8px' }}>
-                           <CheckOutlined style={{ color: '#52c41a', marginRight: '8px' }} />
-                           <Text>所选指标均可在对应数据集取数</Text>
-                         </div>
-                         <div style={{ marginBottom: '8px' }}>
-                           <CheckOutlined style={{ color: '#52c41a', marginRight: '8px' }} />
-                           <Text>基准维度与分析维度可匹配</Text>
-                         </div>
-                         <div style={{ marginBottom: '8px' }}>
-                           <CheckOutlined style={{ color: '#52c41a', marginRight: '8px' }} />
-                           <Text>基准指标候选非空</Text>
-                         </div>
-                       </div>
-                     </div>
-                     
-                     <div>
-                       <Text strong>预览：</Text>
-                       <div style={{ marginTop: '8px' }}>
-                         <Text type="secondary">按"比价对象 × 分析对象 × 维度 × 指标"生成样表</Text>
-                         <div style={{ marginTop: '8px' }}>
-                           <Button icon={<EyeOutlined />} onClick={handlePreview}>
-                             生成预览表
-                           </Button>
-                         </div>
-                       </div>
-                     </div>
-                     
-                     <div style={{ textAlign: 'right', marginTop: '24px' }}>
-                        <Space>
-                          <Button icon={<LeftOutlined />} onClick={handlePrev}>
-                            上一步
-                          </Button>
-                          <Button icon={<EyeOutlined />} onClick={handlePreview}>
-                            预览
-                          </Button>
-                        </Space>
-                      </div>
-                   </Card>
-                 )
-               }
-             ]}
-           />
-           
-           {/* 基准数据集选择弹框 */}
-           <Modal
-             title="选择基准数据集"
-             open={baselineModalVisible}
-             onOk={handleBaselineModalOk}
-             onCancel={handleBaselineModalCancel}
-             width={600}
-           >
-             <div style={{ marginBottom: '16px' }}>
-               <Checkbox 
-                 indeterminate={tempSelectedBaselines.length > 0 && tempSelectedBaselines.length < mockDatasets.length}
-                 checked={tempSelectedBaselines.length === mockDatasets.length}
-                 onChange={(e) => handleSelectAllBaselines(e.target.checked)}
-               >
-                 全选
-               </Checkbox>
-             </div>
-             <Checkbox.Group 
-               value={tempSelectedBaselines} 
-               onChange={setTempSelectedBaselines}
-               style={{ width: '100%' }}
-             >
-               <Row>
-                 {mockDatasets.map(dataset => (
-                   <Col span={24} key={dataset.value} style={{ marginBottom: '8px' }}>
-                     <Checkbox value={dataset.value}>
-                       {dataset.label}
-                     </Checkbox>
-                   </Col>
-                 ))}
-               </Row>
-             </Checkbox.Group>
-           </Modal>
-         </Form>
       </div>
     );
   }
@@ -535,52 +2008,81 @@ const PriceModel2Management: React.FC = () => {
       </div>
 
       <Card title="模型列表">
-        {models.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px 0', color: '#999' }}>
-            暂无数据，点击"新建模型"开始创建
-          </div>
-        ) : (
-          <div>
-            {models.map(model => (
-              <Card
-                key={model.id}
-                size="small"
-                style={{ marginBottom: '16px' }}
-                hoverable
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <Title level={4} style={{ margin: 0, marginBottom: '4px' }}>
-                      {model.modelName}
-                    </Title>
-                    <Text type="secondary">{model.modelCode}</Text>
-                    <div style={{ marginTop: '8px' }}>
-                       {model.tags?.map(tag => (
-                         <Tag key={tag} color="blue">
-                           {tag}
-                         </Tag>
-                       ))}
-                       <Tag color={model.status === 'enabled' ? 'green' : 'default'}>
-                         {model.status === 'enabled' ? '启用' : '停用'}
-                       </Tag>
-                     </div>
-                  </div>
-                  <Space>
-                    <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(model)}>
-                      编辑
-                    </Button>
-                    <Button size="small" icon={<CopyOutlined />}>
-                      复制
-                    </Button>
-                    <Button size="small" icon={<DeleteOutlined />} danger>
-                      删除
-                    </Button>
-                  </Space>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
+        <Table
+          dataSource={models}
+          rowKey="id"
+          pagination={false}
+          scroll={{ x: 800 }}
+          columns={[
+            {
+              title: '模型名称',
+              dataIndex: 'modelName',
+              key: 'modelName',
+              width: 200,
+              ellipsis: true,
+              render: (text: string, record: PriceModel2) => (
+                <Button 
+                  type="link" 
+                  style={{ padding: 0, height: 'auto', fontWeight: 500 }}
+                  onClick={() => handleEdit(record)}
+                >
+                  {text}
+                </Button>
+              ),
+            },
+            {
+              title: '模型编码',
+              dataIndex: 'modelCode',
+              key: 'modelCode',
+              width: 180,
+              ellipsis: true,
+            },
+            {
+              title: '标签',
+              dataIndex: 'tags',
+              key: 'tags',
+              width: 200,
+              render: (tags: string[]) => (
+                <>
+                  {tags?.map(tag => (
+                    <Tag key={tag} color="blue" style={{ marginBottom: 4 }}>
+                      {tag}
+                    </Tag>
+                  ))}
+                </>
+              ),
+            },
+            {
+              title: '启用状态',
+              dataIndex: 'enabled',
+              key: 'enabled',
+              width: 100,
+              render: (enabled: boolean) => (
+                <Tag color={enabled ? 'green' : 'default'}>
+                  {enabled ? '启用' : '停用'}
+                </Tag>
+              ),
+            },
+            {
+              title: '操作',
+              key: 'action',
+              width: 150,
+              render: (_, record: PriceModel2) => (
+                <Space size="small">
+                  <Button type="link" size="small" onClick={() => handleEdit(record)}>
+                    编辑
+                  </Button>
+                  <Button type="link" size="small">
+                    复制
+                  </Button>
+                  <Button type="link" size="small" danger>
+                    删除
+                  </Button>
+                </Space>
+              ),
+            },
+          ]}
+        />
       </Card>
     </div>
   );
