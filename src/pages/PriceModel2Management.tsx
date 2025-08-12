@@ -89,6 +89,31 @@ interface BaselineQueryCondition {
   componentType: string;
 }
 
+interface CalculationIndicator {
+  id: string;
+  indicatorId: string;
+  name: string;
+  description: string;
+  tags: string[];
+  bindBaseline: 'all' | 'specific';
+  specificBaselines?: string[];
+  participantIndicator: string;
+  baselineIndicator: string;
+  formula: string;
+  dataType: 'number' | 'string' | 'boolean';
+  unit: string;
+  decimalPlaces: number;
+  formatType: 'percentage' | 'currency' | 'thousands' | 'none';
+  nullHandling: 'null' | 'zero' | 'custom';
+  customNullValue?: string;
+  negativeClipping: 'none' | 'zero' | 'range';
+  rangeMin?: number;
+  rangeMax?: number;
+  errorMarking: boolean;
+  enabled: boolean;
+  versionNote: string;
+}
+
 interface PriceModel2 {
   id?: string;
   modelName: string;
@@ -112,7 +137,8 @@ interface PriceModel2 {
   // 指标与基准
   analysisIndicators: AnalysisIndicator[];
   baselineCandidates: BaselineCandidate[];
-  
+  // 计算指标
+  calculationIndicators: CalculationIndicator[];
   // 显示属性
   displayAttributes: DisplayAttribute[];
 }
@@ -139,6 +165,7 @@ const PriceModel2Management: React.FC = () => {
       analysisDimensions: ['purchase_org', 'brand'],
       analysisIndicators: [],
       baselineCandidates: [],
+      calculationIndicators: [],
       displayAttributes: []
     },
     {
@@ -160,6 +187,7 @@ const PriceModel2Management: React.FC = () => {
       analysisDimensions: ['brand', 'spec'],
       analysisIndicators: [],
       baselineCandidates: [],
+      calculationIndicators: [],
       displayAttributes: []
     }
   ]);
@@ -184,12 +212,17 @@ const PriceModel2Management: React.FC = () => {
   // 显示属性相关状态
   const [displayAttributes, setDisplayAttributes] = useState<DisplayAttribute[]>([]);
   
+  // 计算指标相关状态
+  const [calculationIndicators, setCalculationIndicators] = useState<CalculationIndicator[]>([]);
+  
   // 比价维度相关状态
   const [analysisDimensions, setAnalysisDimensions] = useState<string[]>([]);
   
   // 弹窗状态
   const [datasetModalVisible, setDatasetModalVisible] = useState(false);
   const [conditionEditModalVisible, setConditionEditModalVisible] = useState(false);
+  const [calculationIndicatorModalVisible, setCalculationIndicatorModalVisible] = useState(false);
+  const [editingCalculationIndicator, setEditingCalculationIndicator] = useState<CalculationIndicator | null>(null);
   const [dimensionModalVisible, setDimensionModalVisible] = useState(false);
 
   const [datasetModalType, setDatasetModalType] = useState<'primary' | 'attached'>('primary');
@@ -341,6 +374,7 @@ const PriceModel2Management: React.FC = () => {
     { title: '选择数据集', description: '选择主数据集、基准数据集' },
     { title: '设置比价对象', description: '比价对象、比价指标、比价维度、属性显示' },
     { title: '设置基准对象', description: '基准指标' },
+    { title: '设置计算指标', description: '衍生指标库，配置计算指标' },
     { title: '预览与校验', description: 'SQL预览和配置校验' }
   ];
 
@@ -356,6 +390,7 @@ const PriceModel2Management: React.FC = () => {
     setConditionInheritances([]);
     setAnalysisIndicators([]);
     setBaselineCandidates([]);
+    setCalculationIndicators([]);
     setDisplayAttributes([]);
   };
 
@@ -380,6 +415,7 @@ const PriceModel2Management: React.FC = () => {
     setConditionInheritances(model.conditionInheritance || []);
     setAnalysisIndicators(model.analysisIndicators || []);
     setBaselineCandidates(model.baselineCandidates || []);
+    setCalculationIndicators(model.calculationIndicators || []);
     setDisplayAttributes(model.displayAttributes || []);
   };
 
@@ -395,6 +431,7 @@ const PriceModel2Management: React.FC = () => {
         conditionInheritance: conditionInheritances,
         analysisIndicators,
         baselineCandidates,
+        calculationIndicators,
         displayAttributes
       };
       
@@ -1314,7 +1351,154 @@ const PriceModel2Management: React.FC = () => {
           </Card>
         );
 
-      case 4: // 预览与校验
+      case 4: // 设置计算指标
+        return (
+          <Card title="设置计算指标">
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <Text strong>计算指标列表（衍生指标库）</Text>
+                <Space>
+                  <Button 
+                    type="primary" 
+                    icon={<PlusOutlined />} 
+                    onClick={() => {
+                      setEditingCalculationIndicator(null);
+                      setCalculationIndicatorModalVisible(true);
+                    }}
+                  >
+                    新增计算指标
+                  </Button>
+                  <Button icon={<CopyOutlined />}>复制</Button>
+                  <Button>导入/导出</Button>
+                </Space>
+              </div>
+              
+              {calculationIndicators.length > 0 ? (
+                <Table
+                  dataSource={calculationIndicators}
+                  rowKey="id"
+                  pagination={false}
+                  size="small"
+                  columns={[
+                    {
+                      title: '指标ID',
+                      dataIndex: 'indicatorId',
+                      key: 'indicatorId',
+                      width: 120,
+                    },
+                    {
+                      title: '名称',
+                      dataIndex: 'name',
+                      key: 'name',
+                      width: 120,
+                    },
+                    {
+                      title: '绑定基准',
+                      dataIndex: 'bindBaseline',
+                      key: 'bindBaseline',
+                      width: 100,
+                      render: (value: string, record: CalculationIndicator) => {
+                        if (value === 'all') return '全部';
+                        if (value === 'specific' && record.specificBaselines) {
+                          return record.specificBaselines.join(', ');
+                        }
+                        return '-';
+                      }
+                    },
+                    {
+                      title: '数据类型',
+                      dataIndex: 'dataType',
+                      key: 'dataType',
+                      width: 80,
+                    },
+                    {
+                      title: '单位',
+                      dataIndex: 'unit',
+                      key: 'unit',
+                      width: 60,
+                    },
+                    {
+                      title: '小数位',
+                      dataIndex: 'decimalPlaces',
+                      key: 'decimalPlaces',
+                      width: 60,
+                    },
+                    {
+                      title: '启用',
+                      dataIndex: 'enabled',
+                      key: 'enabled',
+                      width: 60,
+                      render: (enabled: boolean, record: CalculationIndicator) => (
+                        <Switch 
+                          checked={enabled} 
+                          size="small"
+                          onChange={(checked) => {
+                            const newIndicators = calculationIndicators.map(item => 
+                              item.id === record.id ? { ...item, enabled: checked } : item
+                            );
+                            setCalculationIndicators(newIndicators);
+                          }}
+                        />
+                      ),
+                    },
+                    {
+                      title: '操作',
+                      key: 'action',
+                      width: 120,
+                      render: (_, record: CalculationIndicator) => (
+                        <Space size="small">
+                          <Button
+                            type="link"
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={() => {
+                              setEditingCalculationIndicator(record);
+                              setCalculationIndicatorModalVisible(true);
+                            }}
+                          >
+                            编辑
+                          </Button>
+                          <Button
+                            type="link"
+                            size="small"
+                            icon={<CopyOutlined />}
+                          >
+                            复制
+                          </Button>
+                          <Button
+                            type="link"
+                            size="small"
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={() => {
+                              const newIndicators = calculationIndicators.filter(item => item.id !== record.id);
+                              setCalculationIndicators(newIndicators);
+                            }}
+                          >
+                            删除
+                          </Button>
+                        </Space>
+                      ),
+                    },
+                  ]}
+                />
+              ) : (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
+                  暂无计算指标，点击上方"新增计算指标"按钮开始配置
+                </div>
+              )}
+              
+              <Alert
+                message="说明：计算指标是基于参与侧指标和基准侧指标的衍生指标，支持自定义公式计算。配置后的指标将成为模型的标准字段。"
+                type="info"
+                showIcon
+                style={{ marginTop: 16 }}
+              />
+            </div>
+          </Card>
+        );
+
+      case 5: // 预览与校验
         return (
           <Card title="预览与校验">
             <div style={{ marginBottom: 24 }}>
@@ -1992,6 +2176,182 @@ GROUP BY a.item_id, a.spec, a.brand, a.vendor_id`}
               },
             ]}
           />
+        </Modal>
+
+        {/* 计算指标编辑Modal */}
+        <Modal
+          title={editingCalculationIndicator ? '编辑计算指标' : '新增计算指标'}
+          open={calculationIndicatorModalVisible}
+          onCancel={() => {
+            setCalculationIndicatorModalVisible(false);
+            setEditingCalculationIndicator(null);
+          }}
+          onOk={() => {
+            // 这里应该有表单验证和保存逻辑
+            const newIndicator: CalculationIndicator = {
+              id: editingCalculationIndicator?.id || Date.now().toString(),
+              indicatorId: editingCalculationIndicator?.indicatorId || 'ind_diff_rate',
+              name: editingCalculationIndicator?.name || '差异率',
+              description: editingCalculationIndicator?.description || '协议价相对基准价的差异比例',
+              tags: editingCalculationIndicator?.tags || ['价格对比'],
+              bindBaseline: editingCalculationIndicator?.bindBaseline || 'all',
+              specificBaselines: editingCalculationIndicator?.specificBaselines,
+              participantIndicator: editingCalculationIndicator?.participantIndicator || 'ind_agreement_price',
+              baselineIndicator: editingCalculationIndicator?.baselineIndicator || 'ind_hist_min',
+              formula: editingCalculationIndicator?.formula || '( ${COMPARE} - ${BASELINE} ) / NULLIF(${BASELINE},0)',
+              dataType: editingCalculationIndicator?.dataType || 'number',
+              unit: editingCalculationIndicator?.unit || '%',
+              decimalPlaces: editingCalculationIndicator?.decimalPlaces || 4,
+              formatType: editingCalculationIndicator?.formatType || 'percentage',
+              nullHandling: editingCalculationIndicator?.nullHandling || 'null',
+              customNullValue: editingCalculationIndicator?.customNullValue,
+              negativeClipping: editingCalculationIndicator?.negativeClipping || 'none',
+              rangeMin: editingCalculationIndicator?.rangeMin,
+              rangeMax: editingCalculationIndicator?.rangeMax,
+              errorMarking: editingCalculationIndicator?.errorMarking || true,
+              enabled: editingCalculationIndicator?.enabled !== undefined ? editingCalculationIndicator.enabled : true,
+              versionNote: editingCalculationIndicator?.versionNote || '初始版本'
+            };
+            
+            if (editingCalculationIndicator) {
+              // 编辑模式
+              const newIndicators = calculationIndicators.map(item => 
+                item.id === editingCalculationIndicator.id ? newIndicator : item
+              );
+              setCalculationIndicators(newIndicators);
+            } else {
+              // 新增模式
+              setCalculationIndicators(prev => [...prev, newIndicator]);
+            }
+            
+            setCalculationIndicatorModalVisible(false);
+            setEditingCalculationIndicator(null);
+          }}
+          okText="保存"
+          cancelText="取消"
+          width={600}
+        >
+          <Form layout="vertical">
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="指标ID" required>
+                  <Input 
+                    placeholder="ind_diff_rate" 
+                    defaultValue={editingCalculationIndicator?.indicatorId || 'ind_diff_rate'}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="名称" required>
+                  <Input 
+                    placeholder="差异率" 
+                    defaultValue={editingCalculationIndicator?.name || '差异率'}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+            
+            <Form.Item label="描述">
+              <TextArea 
+                rows={3} 
+                placeholder="协议价相对基准价的差异比例" 
+                defaultValue={editingCalculationIndicator?.description || '协议价相对基准价的差异比例'}
+              />
+            </Form.Item>
+            
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="绑定基准" required>
+                  <Select 
+                    placeholder="选择基准"
+                    defaultValue={editingCalculationIndicator?.bindBaseline || 'all'}
+                  >
+                    <Option value="all">全部基准</Option>
+                    <Option value="specific">指定基准</Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="数据类型" required>
+                  <Select 
+                    defaultValue={editingCalculationIndicator?.dataType || 'number'}
+                  >
+                    <Option value="number">数值</Option>
+                    <Option value="string">文本</Option>
+                    <Option value="boolean">布尔</Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+            </Row>
+            
+            <Row gutter={16}>
+              <Col span={8}>
+                <Form.Item label="单位">
+                  <Input 
+                    placeholder="%" 
+                    defaultValue={editingCalculationIndicator?.unit || '%'}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item label="小数位">
+                  <Select 
+                    defaultValue={editingCalculationIndicator?.decimalPlaces || 4}
+                    style={{ width: '100%' }}
+                  >
+                    <Option value={0}>0</Option>
+                    <Option value={1}>1</Option>
+                    <Option value={2}>2</Option>
+                    <Option value={3}>3</Option>
+                    <Option value={4}>4</Option>
+                    <Option value={5}>5</Option>
+                    <Option value={6}>6</Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item label="格式类型">
+                  <Select 
+                    defaultValue={editingCalculationIndicator?.formatType || 'percentage'}
+                  >
+                    <Option value="percentage">百分比</Option>
+                    <Option value="currency">货币</Option>
+                    <Option value="thousands">千分位</Option>
+                    <Option value="none">无格式</Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+            </Row>
+            
+            <Form.Item label="公式表达式" required>
+              <TextArea 
+                rows={3} 
+                placeholder="( ${COMPARE} - ${BASELINE} ) / NULLIF(${BASELINE},0)" 
+                defaultValue={editingCalculationIndicator?.formula || '( ${COMPARE} - ${BASELINE} ) / NULLIF(${BASELINE},0)'}
+                style={{ fontFamily: 'Monaco, Consolas, monospace' }}
+              />
+            </Form.Item>
+            
+            <div style={{ fontSize: '12px', color: '#666', marginBottom: '16px' }}>
+              可用变量：${'${COMPARE}'} (参与侧指标)、${'${BASELINE}'} (基准侧指标)
+            </div>
+            
+            <Form.Item label="版本注释">
+              <TextArea 
+                rows={2} 
+                placeholder="初始版本" 
+                defaultValue={editingCalculationIndicator?.versionNote || '初始版本'}
+              />
+            </Form.Item>
+            
+            <Form.Item>
+              <Checkbox 
+                defaultChecked={editingCalculationIndicator?.enabled !== false}
+              >
+                启用计算指标
+              </Checkbox>
+            </Form.Item>
+          </Form>
         </Modal>
 
       </div>

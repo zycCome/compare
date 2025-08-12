@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Table, Modal, Form, Input, Select, Space, message, Popconfirm, Tag, Steps, Radio, Checkbox, Divider, Typography, Alert, DatePicker, Upload, Row, Col, Tooltip, InputNumber, TreeSelect, Transfer } from 'antd';
+import { Card, Button, Table, Modal, Form, Input, Select, Space, message, Popconfirm, Tag, Steps, Radio, Checkbox, Divider, Typography, Alert, DatePicker, Upload, Row, Col, Tooltip, InputNumber, TreeSelect, Transfer, TimePicker, Switch } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, SaveOutlined, SendOutlined, UploadOutlined, InfoCircleOutlined, CopyOutlined, PlayCircleOutlined, FileTextOutlined, DownloadOutlined, SettingOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
@@ -233,12 +233,13 @@ const PriceScheme2Management: React.FC = () => {
 
   const steps = [
     { title: '基本信息', description: '方案名称、编码、标签等' },
-    { title: '绑定比价模型', description: '选择比价模型' },
-    { title: '查询范围', description: '组织、产品、供应商、时间范围' },
-    { title: '基准选择', description: '配置基准块' },
-    { title: '计算指标', description: '配置计算指标' },
-    { title: '规则与输出', description: '规则集、输出列、排序' },
-    { title: '预览与执行', description: '预览结果、保存执行' }
+    { title: '绑定模型', description: '选择比价模型' },
+    { title: '查询范围', description: '时间、组织、商品、供应商范围' },
+    { title: '指标选择', description: '对比侧指标、基准别名、计算指标' },
+    { title: '规则与参数', description: '选择规则集、参数配置' },
+    { title: '输出与样式', description: '维度列、指标列、排序、样式' },
+    { title: '预览与执行', description: '预览结果、导出设置' },
+    { title: '调度与推送', description: '调度配置、推送设置（可选）' }
   ];
 
   const handleCreate = () => {
@@ -589,12 +590,12 @@ LIMIT 1000;`;
           </div>
         );
 
-      case 1: // 绑定比价模型
+      case 1: // 绑定模型（只读概览）
         return (
           <div className="space-y-4">
             <Form.Item
               name="modelId"
-              label="选择比价模型"
+              label="选择模型"
               rules={[{ required: true, message: '请选择比价模型' }]}
             >
               <Select
@@ -607,34 +608,47 @@ LIMIT 1000;`;
               </Select>
             </Form.Item>
             {selectedModel && (
-              <Card title="模型摘要（只读）" size="small">
+              <Card title="模型概览" size="small">
                 <div className="space-y-2 text-sm">
-                  <div>• 主数据集: {selectedModel.primaryDataset}</div>
-                  <div>• compare keys: {selectedModel.compareKeys.join(', ')}</div>
-                  <div>• 分析对象: {selectedModel.analysisObject}</div>
-                  <div>• 维度: {selectedModel.dimensions.join('/')}</div>
-                  <div>• 可用/原子指标: {selectedModel.analysisIndicators.join(', ')}</div>
-                  <div>• 可用基准候选: {selectedModel.baselineCandidates.map(bc => `${bc.datasetId}[${bc.indicators.join(',')}]`).join(', ')}</div>
-                  <div>• 默认输出: {selectedModel.defaultOutput.join(', ')}</div>
+                  <div>• 比价对象/维度: {selectedModel.analysisObject} / {selectedModel.dimensions.join('/')}</div>
+                  <div>• 主/基准数据集: {selectedModel.primaryDataset} / {selectedModel.baselineCandidates.map(bc => bc.datasetId).join(', ')}</div>
+                  <div>• 基准别名: {selectedModel.baselineCandidates.map((_, index) => `b${index + 1}`).join('/')}</div>
+                </div>
+              </Card>
+            )}
+            {selectedModel && (
+              <Card title="可用指标" size="small">
+                <div className="space-y-2 text-sm">
+                  <div><Text strong>原子指标:</Text> {selectedModel.analysisIndicators.join(', ')}</div>
+                  <div><Text strong>基准指标:</Text> {selectedModel.baselineCandidates.map(bc => bc.indicators.join(', ')).join(', ')}</div>
+                  <div><Text strong>计算指标:</Text> 差异额_b1/b2, 差异率_b1/b2 (含自动展开名)</div>
                 </div>
               </Card>
             )}
           </div>
         );
 
-      case 2: // 执行范围
+      case 2: // 查询范围（WHERE）
         return (
           <div className="space-y-4">
+            <Form.Item
+              name="timeRange"
+              label="时间范围"
+              rules={[{ required: true, message: '请选择时间范围' }]}
+              extra="字段继承模型主表时间口径"
+            >
+              <RangePicker style={{ width: '100%' }} />
+            </Form.Item>
             <Form.Item name="orgScope" label="组织范围">
-              <Select mode="multiple" placeholder="请选择组织范围">
-                {mockOrganizations.map(org => (
-                  <Option key={org.id} value={org.id}>{org.name}</Option>
-                ))}
-              </Select>
+              <TreeSelect
+                multiple
+                placeholder="请选择组织范围"
+                treeData={mockOrganizations.map(org => ({ title: org.name, value: org.id, key: org.id }))}
+              />
             </Form.Item>
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="productCategory" label="商品分类">
+                <Form.Item name="productCategory" label="商品/品牌/SKU">
                   <Select placeholder="请选择商品分类">
                     {mockCategories.map(cat => (
                       <Option key={cat.id} value={cat.id}>{cat.name}</Option>
@@ -652,200 +666,222 @@ LIMIT 1000;`;
                 </Form.Item>
               </Col>
             </Row>
-            <Form.Item label="SKU/清单导入">
+            <Form.Item label="SKU清单导入">
               <Upload>
-                <Button icon={<UploadOutlined />}>选择文件</Button>
+                <Button icon={<UploadOutlined />}>导入SKU清单</Button>
               </Upload>
             </Form.Item>
-            <Form.Item
-              name="timeRange"
-              label="时间范围"
-              rules={[{ required: true, message: '请选择时间范围' }]}
-            >
-              <RangePicker style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="vendorScope" label="供应商（可选）">
-              <Select mode="multiple" placeholder="请选择供应商">
+            <Form.Item name="vendorScope" label="供应商">
+              <Select mode="multiple" placeholder="请选择供应商" showSearch>
                 {mockVendors.map(vendor => (
                   <Option key={vendor.id} value={vendor.id}>{vendor.name}</Option>
                 ))}
               </Select>
             </Form.Item>
-          </div>
-        );
-
-      case 3: // 多基准设置
-        return (
-          <div className="space-y-4">
+            <Form.Item label="其他条件">
+              <Button type="dashed" icon={<PlusOutlined />}>添加条件</Button>
+              <div className="text-sm text-gray-500 mt-1">来自模型白名单字段；支持继承到基准</div>
+            </Form.Item>
             <Alert
-              message="配置比价基准，每个基准代表一个对比维度，支持多基准并列比较。"
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
-            <div className="flex justify-between items-center">
-              <Title level={5}>基准块配置</Title>
-              <Button type="primary" icon={<PlusOutlined />} onClick={addBaselineBlock}>
-                添加基准块
-              </Button>
-            </div>
-            {baselines.map((baseline, index) => (
-              <Card
-                key={baseline.alias}
-                title={`基准 ${index + 1}: ${baseline.name || '未命名'}`}
-                size="small"
-                extra={
-                  <Space>
-                    <Button size="small" icon={<CopyOutlined />} onClick={() => copyBaselineBlock(index)}>复制</Button>
-                    <Button size="small" danger icon={<DeleteOutlined />} onClick={() => removeBaselineBlock(index)}>删除</Button>
-                  </Space>
-                }
-              >
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <div className="mb-2">
-                      <Text strong>基准名称 *</Text>
-                      <Input
-                        style={{ marginTop: 4 }}
-                        placeholder="请输入基准名称"
-                        value={baseline.name}
-                        onChange={(e) => updateBaselineBlock(index, { name: e.target.value })}
-                      />
-                    </div>
-                  </Col>
-                  <Col span={12}>
-                    <div className="mb-2">
-                      <Text strong>基准别名 *</Text>
-                      <Input
-                        style={{ marginTop: 4 }}
-                        placeholder="请输入基准别名"
-                        value={baseline.alias}
-                        onChange={(e) => updateBaselineBlock(index, { alias: e.target.value })}
-                      />
-                    </div>
-                  </Col>
-                </Row>
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <div className="mb-2">
-                      <Text strong>基准数据集 *</Text>
-                      <Select
-                        style={{ width: '100%', marginTop: 4 }}
-                        placeholder="请选择基准数据集"
-                        value={baseline.datasetAlias}
-                        onChange={(value) => updateBaselineBlock(index, { datasetAlias: value })}
-                      >
-                        {mockDatasets.map(ds => (
-                          <Option key={ds.id} value={ds.id}>{ds.name}</Option>
-                        ))}
-                      </Select>
-                    </div>
-                  </Col>
-                  <Col span={12}>
-                    <div className="mb-2">
-                      <Text strong>基准指标 *</Text>
-                      <Select
-                        style={{ width: '100%', marginTop: 4 }}
-                        placeholder="请选择基准指标"
-                        value={baseline.indicatorLibId}
-                        onChange={(value) => updateBaselineBlock(index, { indicatorLibId: value })}
-                      >
-                        {mockIndicators.map(ind => (
-                          <Option key={ind.id} value={ind.id}>{ind.name}</Option>
-                        ))}
-                      </Select>
-                    </div>
-                  </Col>
-                </Row>
-                <div className="mb-2">
-                  <Text strong>对齐维度策略</Text>
-                  <Select
-                    mode="multiple"
-                    style={{ width: '100%', marginTop: 4 }}
-                    placeholder="请选择条件"
-                    value={baseline.conditions}
-                    onChange={(value) => updateBaselineBlock(index, { conditions: value })}
-                  >
-                    <Option value="same_product">相同产品</Option>
-                    <Option value="same_vendor">相同供应商</Option>
-                    <Option value="same_org">相同组织</Option>
-                  </Select>
-                </div>
-              </Card>
-            ))}
-            {baselines.length === 0 && (
-              <Alert
-                message="暂无基准配置"
-                description="请点击上方按钮添加基准配置"
-                type="info"
-                showIcon
-              />
-            )}
-          </div>
-        );
-
-      case 4: // 计算指标
-        return (
-          <div className="space-y-4">
-            <Alert
-              message="基于基准配置计算衍生指标，如差异率、差异额等。"
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
-            <div className="flex justify-between items-center">
-              <Title level={5}>计算指标配置</Title>
-              <Button type="primary" icon={<PlusOutlined />}>
-                添加计算指标
-              </Button>
-            </div>
-            <Card size="small" title="示例：与历史最低差异率" style={{ marginBottom: 16 }}>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <div><Text strong>指标名称:</Text> 与历史最低差异率</div>
-                  <div><Text strong>计算公式:</Text> (协议价 - 历史最低价) / 历史最低价 * 100</div>
-                </Col>
-                <Col span={12}>
-                  <div><Text strong>绑定基准:</Text> hist_min</div>
-                  <div><Text strong>单位:</Text> %</div>
-                </Col>
-              </Row>
-            </Card>
-            <Alert
-              message="暂无计算指标配置"
-              description="系统将根据基准配置自动生成常用的计算指标"
+              message="空基准行处理策略"
+              description={
+                <Form.Item name="onMissingBaseline" style={{ marginBottom: 0 }}>
+                  <Radio.Group>
+                    <Radio value="keep">保留</Radio>
+                    <Radio value="filter">过滤</Radio>
+                    <Radio value="mark">标记</Radio>
+                  </Radio.Group>
+                </Form.Item>
+              }
               type="info"
               showIcon
             />
           </div>
         );
 
-      case 5: // 规则与输出
+      case 3: // 指标选择（实例化）
         return (
           <div className="space-y-4">
-            <Alert
-              message="配置比价规则集和输出格式，包括列选择、排序和样式规则。"
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
-            <Form.Item name="ruleSetId" label="绑定规则集">
-              <Select placeholder="请选择规则集" allowClear>
-                {mockRuleSets.map(rule => (
-                  <Option key={rule.id} value={rule.id}>{rule.name}</Option>
+            <Form.Item
+               name="compareIndicatorId"
+               label="对比侧指标"
+               rules={[{ required: true, message: '请选择对比侧指标' }]}
+               extra="从模型'主数据集原子指标'挑选"
+             >
+              <Select placeholder="请选择对比侧指标">
+                {mockIndicators.filter(ind => ind.id.includes('agreement')).map(ind => (
+                  <Option key={ind.id} value={ind.id}>{ind.name}</Option>
                 ))}
               </Select>
             </Form.Item>
+            <Form.Item
+              name="baselineAliases"
+              label="基准别名"
+              rules={[{ required: true, message: '请至少选择一个基准别名' }]}
+              extra="决定启用哪些基准"
+            >
+              <Checkbox.Group>
+                <Row>
+                  <Col span={8}><Checkbox value="b1">b1 (历史最低)</Checkbox></Col>
+                  <Col span={8}><Checkbox value="b2">b2 (市场参考)</Checkbox></Col>
+                  <Col span={8}><Checkbox value="b3">b3 (招采最低)</Checkbox></Col>
+                </Row>
+              </Checkbox.Group>
+            </Form.Item>
             <div>
-              <Text strong>输出列</Text>
+              <Text strong>计算指标</Text>
+              <div className="text-sm text-gray-500 mb-2">勾选要输出的计算指标（来自模型，含 *_b1/_b2 自动展开）</div>
+              <Table
+                size="small"
+                pagination={false}
+                columns={[
+                  {
+                    title: '选择',
+                    dataIndex: 'selected',
+                    width: 60,
+                    render: (_, record) => <Checkbox />
+                  },
+                  { title: 'ID', dataIndex: 'id', width: 120 },
+                  { title: '名称', dataIndex: 'name' },
+                  { title: '绑定模式', dataIndex: 'bindMode', width: 100 },
+                  { title: '可用后缀', dataIndex: 'suffixes', width: 120 },
+                  { title: '单位', dataIndex: 'unit', width: 80 },
+                  { title: '说明', dataIndex: 'description' }
+                ]}
+                dataSource={[
+                  {
+                    key: '1',
+                    id: 'ind_diff_amount',
+                    name: '差异额',
+                    bindMode: 'ALL',
+                    suffixes: '_b1, _b2, _b3',
+                    unit: '元',
+                    description: '对比侧价格与基准价格的差异金额'
+                  },
+                  {
+                    key: '2',
+                    id: 'ind_diff_rate',
+                    name: '差异率',
+                    bindMode: 'ALL',
+                    suffixes: '_b1, _b2, _b3',
+                    unit: '%',
+                    description: '对比侧价格与基准价格的差异比例'
+                  }
+                ]}
+              />
+            </div>
+            <Alert
+              message="说明"
+              description="计算列由模型定义，方案只做启用与基准勾选。勾选后将输出最终列名（如 ind_diff_rate_b1）"
+              type="info"
+              showIcon
+            />
+          </div>
+        );
+
+      case 4: // 规则与参数
+        return (
+          <div className="space-y-4">
+            <div>
+              <Text strong>规则类型</Text>
+              <div className="text-sm text-gray-500 mb-2">选择规则类型</div>
+              <Radio.Group defaultValue="control">
+                <Radio value="control">控制型</Radio>
+                <Radio value="scoring">评分型</Radio>
+              </Radio.Group>
+            </div>
+            <div>
+              <Text strong>规则实现</Text>
+              <div className="text-sm text-gray-500 mb-2">控制型：支持条件列表 AND/OR 组合</div>
+              <div className="space-y-2">
+                <div className="border p-3 rounded">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Text>条件列表：</Text>
+                    <Select defaultValue="AND" style={{ width: 80 }}>
+                      <Option value="AND">AND</Option>
+                      <Option value="OR">OR</Option>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Text>指标选择：</Text>
+                      <Select placeholder="支持计算指标，如差异率、差异额" style={{ width: 200 }}>
+                        <Option value="diff_rate">差异率</Option>
+                        <Option value="diff_amount">差异额</Option>
+                      </Select>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Text>条件符号：</Text>
+                      <Select defaultValue=">" style={{ width: 100 }}>
+                        <Option value=">">&gt;</Option>
+                        <Option value="<">&lt;</Option>
+                        <Option value="=">=</Option>
+                        <Option value="!=">!=</Option>
+                        <Option value="BETWEEN">BETWEEN</Option>
+                        <Option value="IN">IN</Option>
+                      </Select>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Text>阈值：</Text>
+                      <Input placeholder="数值输入值（支持百分比/货币自动格式）" style={{ width: 200 }} />
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Text>提示信息：</Text>
+                      <Input placeholder="文本" defaultValue="价格偏高" style={{ width: 150 }} />
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Text>严重程度：</Text>
+                      <Select defaultValue="high" style={{ width: 100 }}>
+                        <Option value="high">高/中/低</Option>
+                      </Select>
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      示例：差异率 &gt; 0.1 → 显示 "价格偏高"
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <Text strong>评分因子配置（评分型）</Text>
+              <div className="text-sm text-gray-500 mb-2">从引用的内置中选择可评分的指标</div>
+              <div className="space-y-2">
+                <div>为每个指标设置：</div>
+                <div className="ml-4 space-y-1">
+                  <div>- 权重（百分比）</div>
+                  <div>- 分值算法（区间打分 / 公式打分）</div>
+                  <div>- 区间分配置（如 0%-5% = 100分, 5%-10% = 80分）</div>
+                  <div>- 公式分配置（如 100 - (差异率*1000)）</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 5: // 输出与样式
+        return (
+          <div className="space-y-4">
+            <Alert
+              message="配置输出格式，包括列选择、排序和样式规则。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <div>
+              <Text strong>输出列配置</Text>
+              <div className="text-sm text-gray-500 mb-2">拖拽调整列顺序</div>
               <div className="mt-2 p-2 border border-dashed border-gray-300 rounded">
                 {outputColumns.map((column, index) => (
                   <div
                     key={column}
                     className="p-2 mb-1 bg-blue-50 border border-blue-200 rounded flex justify-between items-center"
                   >
-                    <span>{column}</span>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox defaultChecked />
+                      <span>{column}</span>
+                    </div>
                     <Space>
+                      <Input size="small" placeholder="宽度" style={{ width: 80 }} />
                       {index > 0 && (
                         <Button
                           size="small"
@@ -892,6 +928,43 @@ LIMIT 1000;`;
                 </Form.Item>
               </Col>
             </Row>
+            <div>
+              <Text strong>样式规则</Text>
+              <div className="text-sm text-gray-500 mb-2">配置条件格式化样式</div>
+              <div className="space-y-2">
+                <div className="border p-3 rounded">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Text>规则名称：</Text>
+                    <Input placeholder="如：高风险标红" style={{ width: 150 }} />
+                  </div>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Text>应用列：</Text>
+                    <Select placeholder="选择要应用样式的列" style={{ width: 200 }}>
+                      <Option value="diff_rate">差异率</Option>
+                      <Option value="price">价格</Option>
+                    </Select>
+                  </div>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Text>条件：</Text>
+                    <Select defaultValue=">" style={{ width: 80 }}>
+                      <Option value=">">&gt;</Option>
+                      <Option value="<">&lt;</Option>
+                      <Option value="=">=</Option>
+                    </Select>
+                    <Input placeholder="阈值" style={{ width: 100 }} />
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Text>样式：</Text>
+                    <Select placeholder="选择样式" style={{ width: 150 }}>
+                      <Option value="red">红色背景</Option>
+                      <Option value="yellow">黄色背景</Option>
+                      <Option value="green">绿色背景</Option>
+                    </Select>
+                  </div>
+                </div>
+                <Button type="dashed" icon={<PlusOutlined />}>添加样式规则</Button>
+              </div>
+            </div>
             <Divider>导出设置</Divider>
             <Row gutter={16}>
               <Col span={8}>
@@ -910,6 +983,10 @@ LIMIT 1000;`;
                 </Form.Item>
               </Col>
             </Row>
+            <div className="flex items-center space-x-2 mt-2">
+              <Text>文件名模板：</Text>
+              <Input placeholder="如：比价方案_{方案名}_{日期}" style={{ width: 250 }} />
+            </div>
           </div>
         );
 
@@ -953,6 +1030,72 @@ LIMIT 1000;`;
                 </Card>
               </Col>
             </Row>
+          </div>
+        );
+
+      case 7: // 调度与推送
+        return (
+          <div className="space-y-4">
+            <Alert
+              message="配置方案的自动执行调度和结果推送设置（可选）。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <div>
+              <Text strong>启用调度</Text>
+              <div className="mt-2">
+                <Checkbox>开启自动调度</Checkbox>
+                <Text className="ml-2 text-sm text-gray-500">开启后方案将按设定时间自动执行</Text>
+              </div>
+            </div>
+            <div>
+              <Text strong>调度频率</Text>
+              <Radio.Group defaultValue="daily" className="mt-2">
+                <Radio value="daily">每日</Radio>
+                <Radio value="weekly">每周</Radio>
+                <Radio value="monthly">每月</Radio>
+                <Radio value="custom">自定义</Radio>
+              </Radio.Group>
+            </div>
+            <div>
+              <Text strong>执行时间</Text>
+              <Input
+                style={{ marginTop: 8, width: 120 }}
+                placeholder="09:00"
+                defaultValue="09:00"
+              />
+            </div>
+            <div>
+              <Text strong>推送设置</Text>
+              <div className="mt-2 space-y-2">
+                <Checkbox>邮件推送</Checkbox>
+                <Checkbox>钉钉推送</Checkbox>
+                <Checkbox>企业微信推送</Checkbox>
+              </div>
+            </div>
+            <div>
+              <Text strong>推送对象</Text>
+              <Select
+                mode="multiple"
+                style={{ width: '100%', marginTop: 8 }}
+                placeholder="选择推送对象"
+              >
+                <Option value="admin">管理员</Option>
+                <Option value="buyer">采购员</Option>
+                <Option value="finance">财务</Option>
+              </Select>
+            </div>
+            <div>
+              <Text strong>推送内容</Text>
+              <Checkbox.Group className="mt-2">
+                <div className="space-y-1">
+                  <div><Checkbox value="summary">执行摘要</Checkbox></div>
+                  <div><Checkbox value="excel">Excel附件</Checkbox></div>
+                  <div><Checkbox value="alert">异常告警</Checkbox></div>
+                </div>
+              </Checkbox.Group>
+            </div>
           </div>
         );
 
