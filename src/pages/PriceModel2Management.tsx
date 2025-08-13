@@ -223,6 +223,9 @@ const PriceModel2Management: React.FC = () => {
   const [conditionEditModalVisible, setConditionEditModalVisible] = useState(false);
   const [calculationIndicatorModalVisible, setCalculationIndicatorModalVisible] = useState(false);
   const [editingCalculationIndicator, setEditingCalculationIndicator] = useState<CalculationIndicator | null>(null);
+  const [bindBaseline, setBindBaseline] = useState<'all' | 'specific'>('all');
+  const [formulaExpression, setFormulaExpression] = useState<string>('( ${COMPARE} - ${BASELINE} ) / NULLIF(${BASELINE},0)');
+  const [formulaMode, setFormulaMode] = useState<'visual' | 'advanced'>('visual');
   const [dimensionModalVisible, setDimensionModalVisible] = useState(false);
 
   const [datasetModalType, setDatasetModalType] = useState<'primary' | 'attached'>('primary');
@@ -2185,6 +2188,9 @@ GROUP BY a.item_id, a.spec, a.brand, a.vendor_id`}
           onCancel={() => {
             setCalculationIndicatorModalVisible(false);
             setEditingCalculationIndicator(null);
+            setBindBaseline('all');
+            setFormulaExpression('( ${COMPARE} - ${BASELINE} ) / NULLIF(${BASELINE},0)');
+            setFormulaMode('visual');
           }}
           onOk={() => {
             // 这里应该有表单验证和保存逻辑
@@ -2229,129 +2235,460 @@ GROUP BY a.item_id, a.spec, a.brand, a.vendor_id`}
           }}
           okText="保存"
           cancelText="取消"
-          width={600}
+          width={1000}
+          style={{ top: 20 }}
         >
-          <Form layout="vertical">
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item label="指标ID" required>
-                  <Input 
-                    placeholder="ind_diff_rate" 
-                    defaultValue={editingCalculationIndicator?.indicatorId || 'ind_diff_rate'}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item label="名称" required>
-                  <Input 
-                    placeholder="差异率" 
-                    defaultValue={editingCalculationIndicator?.name || '差异率'}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-            
-            <Form.Item label="描述">
-              <TextArea 
-                rows={3} 
-                placeholder="协议价相对基准价的差异比例" 
-                defaultValue={editingCalculationIndicator?.description || '协议价相对基准价的差异比例'}
-              />
-            </Form.Item>
-            
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item label="绑定基准" required>
-                  <Select 
-                    placeholder="选择基准"
-                    defaultValue={editingCalculationIndicator?.bindBaseline || 'all'}
+          <div style={{ display: 'flex', gap: '24px', height: '600px' }}>
+            {/* 左侧表单区域 */}
+            <div style={{ flex: 1, overflowY: 'auto', paddingRight: '12px' }}>
+              <Form layout="vertical">
+                {/* 基本信息 */}
+                <div style={{ marginBottom: '24px' }}>
+                  <Text strong style={{ fontSize: '16px', color: '#1890ff' }}>① 基本信息</Text>
+                  <div style={{ marginTop: '12px' }}>
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item label="指标ID" required>
+                          <Input 
+                            placeholder="ind_diff_rate" 
+                            defaultValue={editingCalculationIndicator?.indicatorId || 'ind_diff_rate'}
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item label="名称" required>
+                          <Input 
+                            placeholder="差异率" 
+                            defaultValue={editingCalculationIndicator?.name || '差异率'}
+                          />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                    
+                    <Form.Item label="描述">
+                      <TextArea 
+                        rows={2} 
+                        placeholder="协议价相对基准价的差异比例" 
+                        defaultValue={editingCalculationIndicator?.description || '协议价相对基准价的差异比例'}
+                      />
+                    </Form.Item>
+                    
+                    <Form.Item label="标签">
+                      <Select
+                        mode="tags"
+                        placeholder="添加标签"
+                        defaultValue={editingCalculationIndicator?.tags || ['价格对比']}
+                        style={{ width: '100%' }}
+                      >
+                        <Option value="价格对比">价格对比</Option>
+                        <Option value="监控">监控</Option>
+                        <Option value="分析">分析</Option>
+                      </Select>
+                    </Form.Item>
+                  </div>
+                </div>
+
+                {/* 绑定范围 */}
+                 <div style={{ marginBottom: '24px' }}>
+                   <Text strong style={{ fontSize: '16px', color: '#1890ff' }}>② 绑定范围</Text>
+                   <div style={{ marginTop: '12px' }}>
+                     <Row gutter={16}>
+                       <Col span={12}>
+                         <Form.Item label="绑定基准" required>
+                            <Radio.Group 
+                              value={bindBaseline}
+                              style={{ width: '100%' }}
+                              onChange={(e) => {
+                                setBindBaseline(e.target.value);
+                              }}
+                            >
+                              <Radio value="all">全部基准</Radio>
+                              <Radio value="specific">指定基准</Radio>
+                            </Radio.Group>
+                          </Form.Item>
+                       </Col>
+                       <Col span={12}>
+                         <Form.Item label="数据类型" required>
+                           <Select 
+                             defaultValue={editingCalculationIndicator?.dataType || 'number'}
+                           >
+                             <Option value="number">数值</Option>
+                             <Option value="string">文本</Option>
+                             <Option value="boolean">布尔</Option>
+                           </Select>
+                         </Form.Item>
+                       </Col>
+                     </Row>
+                     
+                     {/* 当选择指定基准时显示基准选择器 */}
+                      {bindBaseline === 'specific' && (
+                        <Form.Item label="选择基准" required>
+                          <Select
+                            mode="multiple"
+                            placeholder="请选择要绑定的基准"
+                            defaultValue={editingCalculationIndicator?.specificBaselines || []}
+                            style={{ width: '100%' }}
+                          >
+                            <Option value="baseline_hist_min">历史最低价</Option>
+                            <Option value="baseline_market_ref">市场参考价</Option>
+                            <Option value="baseline_bid_min">中标最低价</Option>
+                            <Option value="baseline_avg_price">平均价格</Option>
+                          </Select>
+                        </Form.Item>
+                      )}
+                     
+                     <Row gutter={16}>
+                       <Col span={12}>
+                         <Form.Item label="参与侧指标" required>
+                           <Select 
+                             placeholder="从主数据集原子指标选择"
+                             defaultValue={editingCalculationIndicator?.participantIndicator || 'ind_agreement_price'}
+                           >
+                             <Option value="ind_agreement_price">协议价</Option>
+                             <Option value="ind_tax_price">含税价</Option>
+                             <Option value="ind_net_price">净价</Option>
+                           </Select>
+                         </Form.Item>
+                       </Col>
+                       {bindBaseline === 'specific' && (
+                          <Col span={12}>
+                            <Form.Item label="基准侧指标" required>
+                              <Select 
+                                placeholder="从基准候选选择"
+                                defaultValue={editingCalculationIndicator?.baselineIndicator || 'ind_hist_min'}
+                              >
+                                <Option value="ind_hist_min">历史最低</Option>
+                                <Option value="ind_market_ref">市场参考</Option>
+                                <Option value="ind_bid_min">中标最低</Option>
+                              </Select>
+                            </Form.Item>
+                          </Col>
+                        )}
+                     </Row>
+                   </div>
+                 </div>
+
+                {/* 公式编辑 */}
+                <div style={{ marginBottom: '24px' }}>
+                  <Text strong style={{ fontSize: '16px', color: '#1890ff' }}>③ 拼装公式（点击积木按钮插入）</Text>
+                  <div style={{ marginTop: '12px' }}>
+                    <Form.Item label="计算方式">
+                       <Radio.Group 
+                         value={formulaMode} 
+                         onChange={(e) => setFormulaMode(e.target.value)}
+                         style={{ marginBottom: '12px' }}
+                       >
+                         <Radio value="visual">可视化编辑</Radio>
+                         <Radio value="advanced">高级表达式</Radio>
+                       </Radio.Group>
+                     </Form.Item>
+                    
+                    {/* 可视化公式构建器 - 仅在可视化模式显示 */}
+                    {formulaMode === 'visual' && (
+                      <>
+                        <div style={{ 
+                          border: '1px solid #d9d9d9', 
+                          borderRadius: '6px', 
+                          padding: '16px', 
+                          backgroundColor: '#fafafa',
+                          marginBottom: '12px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span>( </span>
+                            <Button 
+                              size="small" 
+                              style={{ 
+                                backgroundColor: '#e6f7ff', 
+                                border: '1px solid #91d5ff',
+                                color: '#1890ff',
+                                borderRadius: '4px'
+                              }}
+                            >
+                              协议价 ▼
+                            </Button>
+                            <Button 
+                              size="small" 
+                              style={{ 
+                                backgroundColor: '#fff2e8', 
+                                border: '1px solid #ffbb96',
+                                color: '#fa8c16'
+                              }}
+                            >
+                              -
+                            </Button>
+                            <Button 
+                              size="small" 
+                              style={{ 
+                                backgroundColor: '#f6ffed', 
+                                border: '1px solid #b7eb8f',
+                                color: '#52c41a'
+                              }}
+                            >
+                              基准价 ▼
+                            </Button>
+                            <span> ) ÷ </span>
+                            <Button 
+                              size="small" 
+                              style={{ 
+                                backgroundColor: '#f6ffed', 
+                                border: '1px solid #b7eb8f',
+                                color: '#52c41a'
+                              }}
+                            >
+                              基准价 ▼
+                            </Button>
+                          </div>
+                        </div>
+                        
+                        {/* 插入按钮组 */}
+                        <div style={{ marginBottom: '12px' }}>
+                          <Text strong style={{ display: 'block', marginBottom: '8px' }}>插入变量：</Text>
+                          <Space wrap>
+                            <Button 
+                              size="small" 
+                              icon={<PlusOutlined />}
+                              style={{ backgroundColor: '#e6f7ff', border: '1px solid #91d5ff', color: '#1890ff' }}
+                              onClick={() => {
+                                setFormulaExpression(prev => prev + ' ${COMPARE}');
+                              }}
+                            >
+                              参与侧指标
+                            </Button>
+                            <Button 
+                              size="small" 
+                              icon={<PlusOutlined />}
+                              style={{ backgroundColor: '#f6ffed', border: '1px solid #b7eb8f', color: '#52c41a' }}
+                              onClick={() => {
+                                setFormulaExpression(prev => prev + ' ${BASELINE}');
+                              }}
+                            >
+                              基准侧指标
+                            </Button>
+                          </Space>
+                        </div>
+                        
+                        <div style={{ marginBottom: '12px' }}>
+                          <Text strong style={{ display: 'block', marginBottom: '8px' }}>插入函数：</Text>
+                          <Space wrap>
+                            <Button 
+                              size="small" 
+                              style={{ backgroundColor: '#fff1f0', border: '1px solid #ffa39e', color: '#f5222d' }}
+                              onClick={() => {
+                                setFormulaExpression(prev => prev + ' (${COMPARE} - ${BASELINE})');
+                              }}
+                            >
+                              差异额
+                            </Button>
+                            <Button 
+                              size="small" 
+                              style={{ backgroundColor: '#fff1f0', border: '1px solid #ffa39e', color: '#f5222d' }}
+                              onClick={() => {
+                                setFormulaExpression(prev => prev + ' (${COMPARE} - ${BASELINE}) / NULLIF(${BASELINE}, 0)');
+                              }}
+                            >
+                              差异率
+                            </Button>
+                            <Button 
+                              size="small" 
+                              style={{ backgroundColor: '#f9f0ff', border: '1px solid #d3adf7', color: '#722ed1' }}
+                              onClick={() => {
+                                setFormulaExpression(prev => prev + ' ((${COMPARE} - ${BASELINE}) / NULLIF(${BASELINE}, 0)) * 100');
+                              }}
+                            >
+                              百分比变化
+                            </Button>
+                            <Button 
+                              size="small" 
+                              style={{ backgroundColor: '#f9f0ff', border: '1px solid #d3adf7', color: '#722ed1' }}
+                              onClick={() => {
+                                setFormulaExpression(prev => prev + ' ROUND(${COMPARE}, 2)');
+                              }}
+                            >
+                              四舍五入
+                            </Button>
+                            <Button 
+                              size="small" 
+                              style={{ backgroundColor: '#fff7e6', border: '1px solid #ffd591', color: '#fa8c16' }}
+                              onClick={() => {
+                                setFormulaExpression(prev => prev + ' NULLIF(${BASELINE}, 0)');
+                              }}
+                            >
+                              NULL处理
+                            </Button>
+                          </Space>
+                        </div>
+                      </>
+                    )}
+                    
+                    {/* 高级表达式 - 仅在高级模式显示 */}
+                    {formulaMode === 'advanced' && (
+                      <Form.Item label="高级表达式">
+                        <TextArea 
+                          rows={4} 
+                          placeholder="( ${COMPARE} - ${BASELINE} ) / NULLIF(${BASELINE},0)" 
+                          value={formulaExpression}
+                          onChange={(e) => setFormulaExpression(e.target.value)}
+                          style={{ 
+                            fontFamily: 'Monaco, Consolas, "Courier New", monospace',
+                            fontSize: '13px',
+                            backgroundColor: '#1e1e1e',
+                            color: '#d4d4d4',
+                            border: '1px solid #3c3c3c'
+                          }}
+                        />
+                      </Form.Item>
+                    )}
+                    
+                    <Alert
+                      message="可用变量说明"
+                      description={
+                        <div>
+                          <div><code>${'{COMPARE}'}</code> 代表选择的参与侧指标</div>
+                          <div><code>${'{BASELINE}'}</code> 代表选择的基准侧指标（按"绑定基准/别名"替换）</div>
+                        </div>
+                      }
+                      type="info"
+                      showIcon
+                      style={{ fontSize: '12px' }}
+                    />
+                  </div>
+                </div>
+
+                {/* 格式与显示 */}
+                <div style={{ marginBottom: '24px' }}>
+                  <Text strong style={{ fontSize: '16px', color: '#1890ff' }}>④ 格式与显示</Text>
+                  <div style={{ marginTop: '12px' }}>
+                    <Row gutter={16}>
+                      <Col span={8}>
+                        <Form.Item label="单位">
+                          <Select 
+                            placeholder="%" 
+                            defaultValue={editingCalculationIndicator?.unit || '%'}
+                          >
+                            <Option value="%">%</Option>
+                            <Option value="CNY">CNY</Option>
+                            <Option value="其他">其他</Option>
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                      <Col span={8}>
+                        <Form.Item label="小数位">
+                          <Select 
+                            defaultValue={editingCalculationIndicator?.decimalPlaces || 4}
+                            style={{ width: '100%' }}
+                          >
+                            <Option value={0}>0</Option>
+                            <Option value={1}>1</Option>
+                            <Option value={2}>2</Option>
+                            <Option value={3}>3</Option>
+                            <Option value={4}>4</Option>
+                            <Option value={5}>5</Option>
+                            <Option value={6}>6</Option>
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                      <Col span={8}>
+                        <Form.Item label="格式类型">
+                          <Select 
+                            defaultValue={editingCalculationIndicator?.formatType || 'percentage'}
+                          >
+                            <Option value="percentage">百分比</Option>
+                            <Option value="currency">货币</Option>
+                            <Option value="thousands">千分位</Option>
+                            <Option value="none">无格式</Option>
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  </div>
+                </div>
+
+                <Form.Item>
+                  <Checkbox 
+                    defaultChecked={editingCalculationIndicator?.enabled !== false}
                   >
-                    <Option value="all">全部基准</Option>
-                    <Option value="specific">指定基准</Option>
-                  </Select>
+                    启用计算指标
+                  </Checkbox>
                 </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item label="数据类型" required>
-                  <Select 
-                    defaultValue={editingCalculationIndicator?.dataType || 'number'}
-                  >
-                    <Option value="number">数值</Option>
-                    <Option value="string">文本</Option>
-                    <Option value="boolean">布尔</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-            </Row>
-            
-            <Row gutter={16}>
-              <Col span={8}>
-                <Form.Item label="单位">
-                  <Input 
-                    placeholder="%" 
-                    defaultValue={editingCalculationIndicator?.unit || '%'}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item label="小数位">
-                  <Select 
-                    defaultValue={editingCalculationIndicator?.decimalPlaces || 4}
-                    style={{ width: '100%' }}
-                  >
-                    <Option value={0}>0</Option>
-                    <Option value={1}>1</Option>
-                    <Option value={2}>2</Option>
-                    <Option value={3}>3</Option>
-                    <Option value={4}>4</Option>
-                    <Option value={5}>5</Option>
-                    <Option value={6}>6</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item label="格式类型">
-                  <Select 
-                    defaultValue={editingCalculationIndicator?.formatType || 'percentage'}
-                  >
-                    <Option value="percentage">百分比</Option>
-                    <Option value="currency">货币</Option>
-                    <Option value="thousands">千分位</Option>
-                    <Option value="none">无格式</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-            </Row>
-            
-            <Form.Item label="公式表达式" required>
-              <TextArea 
-                rows={3} 
-                placeholder="( ${COMPARE} - ${BASELINE} ) / NULLIF(${BASELINE},0)" 
-                defaultValue={editingCalculationIndicator?.formula || '( ${COMPARE} - ${BASELINE} ) / NULLIF(${BASELINE},0)'}
-                style={{ fontFamily: 'Monaco, Consolas, monospace' }}
-              />
-            </Form.Item>
-            
-            <div style={{ fontSize: '12px', color: '#666', marginBottom: '16px' }}>
-              可用变量：${'${COMPARE}'} (参与侧指标)、${'${BASELINE}'} (基准侧指标)
+              </Form>
             </div>
             
-            <Form.Item label="版本注释">
-              <TextArea 
-                rows={2} 
-                placeholder="初始版本" 
-                defaultValue={editingCalculationIndicator?.versionNote || '初始版本'}
-              />
-            </Form.Item>
-            
-            <Form.Item>
-              <Checkbox 
-                defaultChecked={editingCalculationIndicator?.enabled !== false}
-              >
-                启用计算指标
-              </Checkbox>
-            </Form.Item>
-          </Form>
+            {/* 右侧预览区域 */}
+            <div style={{ 
+              width: '300px', 
+              borderLeft: '1px solid #f0f0f0', 
+              paddingLeft: '24px',
+              backgroundColor: '#fafafa',
+              borderRadius: '6px',
+              padding: '16px'
+            }}>
+              <Text strong style={{ fontSize: '16px', color: '#1890ff', display: 'block', marginBottom: '16px' }}>⑤ 预览</Text>
+              
+              <div style={{ marginBottom: '16px' }}>
+                <Text strong style={{ display: 'block', marginBottom: '8px' }}>公式（业务）：</Text>
+                <div style={{ 
+                  padding: '8px 12px', 
+                  backgroundColor: '#fff', 
+                  border: '1px solid #d9d9d9',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  fontFamily: 'monospace'
+                }}>
+                  {formulaExpression.replace(/\$\{COMPARE\}/g, '比价指标').replace(/\$\{BASELINE\}/g, '基准指标')}
+                </div>
+              </div>
+              
+              <div style={{ marginBottom: '16px' }}>
+                <Text strong style={{ display: 'block', marginBottom: '8px' }}>公式（SQL）：</Text>
+                <div style={{ 
+                  padding: '8px 12px', 
+                  backgroundColor: '#1e1e1e', 
+                  color: '#d4d4d4',
+                  border: '1px solid #3c3c3c',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  fontFamily: 'Monaco, Consolas, monospace'
+                }}>
+                  <div style={{ whiteSpace: 'pre-wrap' }}>
+                    {formulaExpression
+                      .replace(/\$\{COMPARE\}/g, 'a.price')
+                      .replace(/\$\{BASELINE\}/g, 'b.price')
+                      .split(' ')
+                      .map((token, index) => {
+                        if (token.includes('NULLIF')) return <span key={index} style={{ color: '#dcdcaa' }}>{token} </span>;
+                        if (token.includes('a.price') || token.includes('b.price')) {
+                          const parts = token.split('.');
+                          return <span key={index}><span style={{ color: '#569cd6' }}>{parts[0]}</span>.<span style={{ color: '#9cdcfe' }}>{parts[1]}</span> </span>;
+                        }
+                        if (/^\d+$/.test(token)) return <span key={index} style={{ color: '#b5cea8' }}>{token} </span>;
+                        return <span key={index} style={{ color: '#d4d4d4' }}>{token} </span>;
+                      })
+                    }
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <Text strong style={{ display: 'block', marginBottom: '8px' }}>样例预览：</Text>
+                <Table
+                  size="small"
+                  pagination={false}
+                  dataSource={[
+                    { key: 1, product: '产品A', compare: 100, baseline: 90, result: '11.11%' },
+                    { key: 2, product: '产品B', compare: 85, baseline: 90, result: '-5.56%' },
+                    { key: 3, product: '产品C', compare: 95, baseline: 90, result: '5.56%' }
+                  ]}
+                  columns={[
+                    { title: '产品', dataIndex: 'product', width: 60 },
+                    { title: '协议价', dataIndex: 'compare', width: 60 },
+                    { title: '基准价', dataIndex: 'baseline', width: 60 },
+                    { title: '差异率', dataIndex: 'result', width: 60 }
+                  ]}
+                  style={{ fontSize: '12px' }}
+                />
+              </div>
+            </div>
+          </div>
         </Modal>
 
       </div>

@@ -233,10 +233,8 @@ const PriceScheme2Management: React.FC = () => {
 
   const steps = [
     { title: '基本信息', description: '方案名称、编码、标签等' },
-    { title: '绑定模型', description: '选择比价模型' },
+    { title: '绑定比价模型', description: '选择比价模型、比价指标、基准指标' },
     { title: '查询范围', description: '时间、组织、商品、供应商范围' },
-    { title: '指标选择', description: '对比侧指标、基准别名、计算指标' },
-    { title: '规则与参数', description: '选择规则集、参数配置' },
     { title: '输出与样式', description: '维度列、指标列、排序、样式' },
     { title: '预览与执行', description: '预览结果、导出设置' },
     { title: '调度与推送', description: '调度配置、推送设置（可选）' }
@@ -290,6 +288,13 @@ const PriceScheme2Management: React.FC = () => {
     setSelectedModel(model || null);
     if (model) {
       setOutputColumns([...model.defaultOutput]);
+    } else {
+      // 清空相关字段
+      setOutputColumns([]);
+      form.setFieldsValue({
+        compareIndicatorId: undefined,
+        baselineAliases: undefined
+      });
     }
   };
 
@@ -452,29 +457,48 @@ LIMIT 1000;`;
 
   const columns = [
     {
+      title: '方案编码',
+      dataIndex: 'schemeCode',
+      key: 'schemeCode',
+      width: 200,
+      ellipsis: true,
+    },
+    {
       title: '方案名称',
       dataIndex: 'schemeName',
       key: 'schemeName',
+      width: 250,
+      ellipsis: {
+        showTitle: false,
+      },
       render: (text: string, record: ComparisonScheme) => (
-        <div>
-          <div className="font-medium">{text}</div>
-          <div className="text-sm text-gray-500">{record.schemeCode}</div>
-        </div>
+        <Tooltip placement="topLeft" title={text}>
+          <Button
+            type="link"
+            onClick={() => handleEdit(record)}
+            style={{ padding: 0, height: 'auto', textAlign: 'left', width: '100%' }}
+          >
+            {text}
+          </Button>
+        </Tooltip>
       ),
     },
     {
       title: '绑定模型',
       dataIndex: ['modelRef', 'name'],
       key: 'modelName',
+      width: 180,
+      ellipsis: true,
     },
     {
       title: '标签',
       dataIndex: 'tags',
       key: 'tags',
+      width: 200,
       render: (tags: string[]) => (
         <>
           {tags.map(tag => (
-            <Tag key={tag} color="blue">{tag}</Tag>
+            <Tag key={tag} color="blue" style={{ marginBottom: 2 }}>{tag}</Tag>
           ))}
         </>
       ),
@@ -483,6 +507,7 @@ LIMIT 1000;`;
       title: '状态',
       dataIndex: 'status',
       key: 'status',
+      width: 100,
       render: (status: string) => {
         const statusConfig = {
           DRAFT: { color: 'orange', text: '草稿' },
@@ -497,6 +522,7 @@ LIMIT 1000;`;
       title: '启用状态',
       dataIndex: 'enabled',
       key: 'enabled',
+      width: 100,
       render: (enabled: boolean) => (
         <Tag color={enabled ? 'green' : 'red'}>
           {enabled ? '启用' : '停用'}
@@ -507,20 +533,16 @@ LIMIT 1000;`;
       title: '更新时间',
       dataIndex: 'updatedAt',
       key: 'updatedAt',
+      width: 120,
+      ellipsis: true,
     },
     {
       title: '操作',
       key: 'action',
+      width: 180,
+      fixed: 'right' as const,
       render: (_: any, record: ComparisonScheme) => (
-        <Space size="middle">
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            查看
-          </Button>
+        <Space size="small">
           <Button
             type="link"
             size="small"
@@ -528,6 +550,20 @@ LIMIT 1000;`;
             onClick={() => handleEdit(record)}
           >
             编辑
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => {
+              // 处理停用逻辑
+              const updatedSchemes = schemes.map(s => 
+                s.id === record.id ? { ...s, enabled: false } : s
+              );
+              setSchemes(updatedSchemes);
+              message.success('已停用');
+            }}
+          >
+            停用
           </Button>
           <Popconfirm
             title="确定删除这个比价方案吗？"
@@ -590,40 +626,113 @@ LIMIT 1000;`;
           </div>
         );
 
-      case 1: // 绑定模型（只读概览）
+      case 1: // 绑定比价模型（只读概览）
         return (
           <div className="space-y-4">
             <Form.Item
               name="modelId"
-              label="选择模型"
+              label="选择比价模型"
               rules={[{ required: true, message: '请选择比价模型' }]}
             >
               <Select
-                placeholder="请选择比价模型"
+                placeholder="请选择一个比价模型以配置指标"
                 onChange={handleModelChange}
+                allowClear
               >
                 {mockModels.map(model => (
                   <Option key={model.id} value={model.id}>{model.name}</Option>
                 ))}
               </Select>
             </Form.Item>
-            {selectedModel && (
-              <Card title="模型概览" size="small">
-                <div className="space-y-2 text-sm">
-                  <div>• 比价对象/维度: {selectedModel.analysisObject} / {selectedModel.dimensions.join('/')}</div>
-                  <div>• 主/基准数据集: {selectedModel.primaryDataset} / {selectedModel.baselineCandidates.map(bc => bc.datasetId).join(', ')}</div>
-                  <div>• 基准别名: {selectedModel.baselineCandidates.map((_, index) => `b${index + 1}`).join('/')}</div>
-                </div>
-              </Card>
+            
+            {!selectedModel && (
+              <Alert
+                message="请先选择比价模型"
+                description="选择比价模型后，将显示该模型的比价指标、基准指标和计算指标配置选项"
+                type="info"
+                showIcon
+                style={{ marginTop: 16 }}
+              />
             )}
+            
             {selectedModel && (
-              <Card title="可用指标" size="small">
-                <div className="space-y-2 text-sm">
-                  <div><Text strong>原子指标:</Text> {selectedModel.analysisIndicators.join(', ')}</div>
-                  <div><Text strong>基准指标:</Text> {selectedModel.baselineCandidates.map(bc => bc.indicators.join(', ')).join(', ')}</div>
-                  <div><Text strong>计算指标:</Text> 差异额_b1/b2, 差异率_b1/b2 (含自动展开名)</div>
+              <div className="space-y-4 mt-4">
+                <Divider>比价与基准指标选择</Divider>
+                <Form.Item
+                   name="compareIndicatorId"
+                   label="比价指标"
+                   rules={[{ required: true, message: '请选择比价指标' }]}
+                   extra="从模型'主数据集原子指标'挑选"
+                 >
+                  <Select placeholder="请选择比价指标">
+                    {mockIndicators.filter(ind => ind.id.includes('agreement')).map(ind => (
+                      <Option key={ind.id} value={ind.id}>{ind.name}</Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+                <Form.Item
+                  name="baselineAliases"
+                  label="基准指标"
+                  rules={[{ required: true, message: '请至少选择一个基准指标' }]}
+                  extra="决定启用哪些基准"
+                >
+                  <Checkbox.Group>
+                    <Row>
+                      <Col span={8}><Checkbox value="b1">b1 (历史最低)</Checkbox></Col>
+                      <Col span={8}><Checkbox value="b2">b2 (市场参考)</Checkbox></Col>
+                      <Col span={8}><Checkbox value="b3">b3 (招采最低)</Checkbox></Col>
+                    </Row>
+                  </Checkbox.Group>
+                </Form.Item>
+                <div>
+                  <Text strong>计算指标</Text>
+                  <div className="text-sm text-gray-500 mb-2">勾选要输出的计算指标（来自模型，含 *_b1/_b2 自动展开）</div>
+                  <Table
+                    size="small"
+                    pagination={false}
+                    columns={[
+                      {
+                        title: '选择',
+                        dataIndex: 'selected',
+                        width: 60,
+                        render: (_, record) => <Checkbox />
+                      },
+                      { title: 'ID', dataIndex: 'id', width: 120 },
+                      { title: '名称', dataIndex: 'name' },
+                      { title: '绑定模式', dataIndex: 'bindMode', width: 100 },
+                      { title: '可用后缀', dataIndex: 'suffixes', width: 120 },
+                      { title: '单位', dataIndex: 'unit', width: 80 },
+                      { title: '说明', dataIndex: 'description' }
+                    ]}
+                    dataSource={[
+                      {
+                        key: '1',
+                        id: 'ind_diff_amount',
+                        name: '差异额',
+                        bindMode: 'ALL',
+                        suffixes: '_b1, _b2, _b3',
+                        unit: '元',
+                        description: '对比侧价格与基准价格的差异金额'
+                      },
+                      {
+                        key: '2',
+                        id: 'ind_diff_rate',
+                        name: '差异率',
+                        bindMode: 'ALL',
+                        suffixes: '_b1, _b2, _b3',
+                        unit: '%',
+                        description: '对比侧价格与基准价格的差异比例'
+                      }
+                    ]}
+                  />
                 </div>
-              </Card>
+                <Alert
+                  message="说明"
+                  description="计算列由模型定义，方案只做启用与基准勾选。勾选后将输出最终列名（如 ind_diff_rate_b1）"
+                  type="info"
+                  showIcon
+                />
+              </div>
             )}
           </div>
         );
@@ -631,57 +740,209 @@ LIMIT 1000;`;
       case 2: // 查询范围（WHERE）
         return (
           <div className="space-y-4">
-            <Form.Item
-              name="timeRange"
-              label="时间范围"
-              rules={[{ required: true, message: '请选择时间范围' }]}
-              extra="字段继承模型主表时间口径"
-            >
-              <RangePicker style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="orgScope" label="组织范围">
-              <TreeSelect
-                multiple
-                placeholder="请选择组织范围"
-                treeData={mockOrganizations.map(org => ({ title: org.name, value: org.id, key: org.id }))}
-              />
-            </Form.Item>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="productCategory" label="商品/品牌/SKU">
-                  <Select placeholder="请选择商品分类">
-                    {mockCategories.map(cat => (
-                      <Option key={cat.id} value={cat.id}>{cat.name}</Option>
-                    ))}
-                  </Select>
-                </Form.Item>
+            <Row gutter={16} align="middle">
+              <Col span={4} style={{ textAlign: 'right' }}>
+                <span><span style={{ color: 'red' }}>*</span> 时间范围:</span>
               </Col>
-              <Col span={12}>
-                <Form.Item name="productBrand" label="品牌">
-                  <Select placeholder="请选择品牌">
-                    {mockBrands.map(brand => (
-                      <Option key={brand.id} value={brand.id}>{brand.name}</Option>
-                    ))}
-                  </Select>
+              <Col span={20}>
+                <Form.Item
+                  name="timeRange"
+                  rules={[{ required: true, message: '请选择时间范围' }]}
+                  style={{ marginBottom: 0 }}
+                >
+                  <RangePicker style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
             </Row>
-            <Form.Item label="SKU清单导入">
-              <Upload>
-                <Button icon={<UploadOutlined />}>导入SKU清单</Button>
-              </Upload>
-            </Form.Item>
-            <Form.Item name="vendorScope" label="供应商">
-              <Select mode="multiple" placeholder="请选择供应商" showSearch>
-                {mockVendors.map(vendor => (
-                  <Option key={vendor.id} value={vendor.id}>{vendor.name}</Option>
-                ))}
-              </Select>
-            </Form.Item>
-            <Form.Item label="其他条件">
-              <Button type="dashed" icon={<PlusOutlined />}>添加条件</Button>
-              <div className="text-sm text-gray-500 mt-1">来自模型白名单字段；支持继承到基准</div>
-            </Form.Item>
+            <div className="text-xs text-gray-500 ml-[16.67%]">字段继承模型主表时间口径</div>
+            
+            <Row gutter={16} align="middle">
+              <Col span={4} style={{ textAlign: 'right' }}>
+                <span>组织范围:</span>
+              </Col>
+              <Col span={20}>
+                <Form.Item name="orgScope" style={{ marginBottom: 0 }}>
+                  <TreeSelect
+                    multiple
+                    placeholder="请选择组织范围"
+                    treeData={mockOrganizations.map(org => ({ title: org.name, value: org.id, key: org.id }))}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+            
+            <Row gutter={16} align="middle">
+              <Col span={4} style={{ textAlign: 'right' }}>
+                <span>产品:</span>
+              </Col>
+              <Col span={20}>
+                <Form.Item name="productCategory" style={{ marginBottom: 0 }}>
+                  <Button 
+                    onClick={() => {
+                      const mockProducts = [
+                        { id: '1', materialCode: 'MAT001', materialName: 'IVD试剂A', brand: 'Roche', specification: '100ml', model: 'R001', itemCode: 'IT001' },
+                        { id: '2', materialCode: 'MAT002', materialName: '医疗器械B', brand: 'Siemens', specification: '50ml', model: 'S002', itemCode: 'IT002' },
+                        { id: '3', materialCode: 'MAT003', materialName: '药品C', brand: 'Abbott', specification: '200ml', model: 'A003', itemCode: 'IT003' },
+                        { id: '4', materialCode: 'MAT004', materialName: '耗材D', brand: 'BD', specification: '10个/盒', model: 'B004', itemCode: 'IT004' },
+                        { id: '5', materialCode: 'MAT005', materialName: '设备E', brand: 'GE', specification: '台', model: 'G005', itemCode: 'IT005' }
+                      ];
+                      
+                      Modal.info({
+                        title: '选择产品',
+                        width: 900,
+                        content: (
+                          <Table
+                            dataSource={mockProducts}
+                            rowKey="id"
+                            rowSelection={{
+                              type: 'checkbox',
+                              onChange: (selectedRowKeys, selectedRows) => {
+                                console.log('选中的产品:', selectedRows);
+                              },
+                            }}
+                            pagination={{
+                              pageSize: 10,
+                              showSizeChanger: true,
+                              showQuickJumper: true,
+                              showTotal: (total, range) => `共 ${total} 条记录，当前显示 ${range[0]}-${range[1]} 条`
+                            }}
+                            columns={[
+                              { title: '物料编码', dataIndex: 'materialCode', key: 'materialCode', width: 120 },
+                              { title: '物料名称', dataIndex: 'materialName', key: 'materialName', width: 150 },
+                              { title: '品牌', dataIndex: 'brand', key: 'brand', width: 100 },
+                              { title: '规格', dataIndex: 'specification', key: 'specification', width: 120 },
+                              { title: '型号', dataIndex: 'model', key: 'model', width: 100 },
+                              { title: '货号', dataIndex: 'itemCode', key: 'itemCode', width: 100 }
+                            ]}
+                          />
+                        ),
+                      });
+                    }}
+                  >
+                    请选择产品
+                  </Button>
+                </Form.Item>
+              </Col>
+            </Row>
+            
+            <Row gutter={16} align="middle">
+              <Col span={4} style={{ textAlign: 'right' }}>
+                <span>品牌:</span>
+              </Col>
+              <Col span={20}>
+                <Form.Item name="productBrand" style={{ marginBottom: 0 }}>
+                  <Button 
+                    onClick={() => {
+                      const mockBrands = [
+                        { id: '1', brandCode: 'BR001', brandName: 'Roche', brandType: '国际品牌', country: '瑞士', establishYear: '1896', mainProducts: 'IVD试剂、诊断设备' },
+                        { id: '2', brandCode: 'BR002', brandName: 'Siemens', brandType: '国际品牌', country: '德国', establishYear: '1847', mainProducts: '医疗设备、影像设备' },
+                        { id: '3', brandCode: 'BR003', brandName: 'Abbott', brandType: '国际品牌', country: '美国', establishYear: '1888', mainProducts: '药品、医疗器械' },
+                        { id: '4', brandCode: 'BR004', brandName: 'BD', brandType: '国际品牌', country: '美国', establishYear: '1897', mainProducts: '医疗耗材、注射器' },
+                        { id: '5', brandCode: 'BR005', brandName: 'GE Healthcare', brandType: '国际品牌', country: '美国', establishYear: '1994', mainProducts: '医疗设备、影像系统' }
+                      ];
+                      
+                      Modal.info({
+                        title: '选择品牌',
+                        width: 900,
+                        content: (
+                          <Table
+                            dataSource={mockBrands}
+                            rowKey="id"
+                            rowSelection={{
+                              type: 'checkbox',
+                              onChange: (selectedRowKeys, selectedRows) => {
+                                console.log('选中的品牌:', selectedRows);
+                              },
+                            }}
+                            pagination={{
+                              pageSize: 10,
+                              showSizeChanger: true,
+                              showQuickJumper: true,
+                              showTotal: (total, range) => `共 ${total} 条记录，当前显示 ${range[0]}-${range[1]} 条`
+                            }}
+                            columns={[
+                              { title: '品牌编码', dataIndex: 'brandCode', key: 'brandCode', width: 120 },
+                              { title: '品牌名称', dataIndex: 'brandName', key: 'brandName', width: 150 },
+                              { title: '品牌类型', dataIndex: 'brandType', key: 'brandType', width: 100 },
+                              { title: '国家/地区', dataIndex: 'country', key: 'country', width: 120 },
+                              { title: '成立年份', dataIndex: 'establishYear', key: 'establishYear', width: 100 },
+                              { title: '主营产品', dataIndex: 'mainProducts', key: 'mainProducts', width: 200 }
+                            ]}
+                          />
+                        ),
+                      });
+                    }}
+                  >
+                    请选择品牌
+                  </Button>
+                </Form.Item>
+              </Col>
+            </Row>
+            
+            <Row gutter={16} align="middle">
+              <Col span={4} style={{ textAlign: 'right' }}>
+                <span>供应商:</span>
+              </Col>
+              <Col span={20}>
+                <Form.Item name="vendorScope" style={{ marginBottom: 0 }}>
+                  <Button 
+                    onClick={() => {
+                      const mockVendors = [
+                        { id: '1', vendorCode: 'VD001', vendorName: '上海医疗器械有限公司', vendorType: '代理商', region: '华东地区', contactPerson: '张经理', businessScope: 'IVD试剂、医疗设备' },
+                        { id: '2', vendorCode: 'VD002', vendorName: '北京康复医疗科技股份有限公司', vendorType: '制造商', region: '华北地区', contactPerson: '李总监', businessScope: '康复设备、理疗器械' },
+                        { id: '3', vendorCode: 'VD003', vendorName: '广州生物医药集团', vendorType: '经销商', region: '华南地区', contactPerson: '王主任', businessScope: '生物制品、药品' },
+                        { id: '4', vendorCode: 'VD004', vendorName: '深圳精密医疗器械制造厂', vendorType: '制造商', region: '华南地区', contactPerson: '陈工程师', businessScope: '精密器械、手术器具' },
+                        { id: '5', vendorCode: 'VD005', vendorName: '成都医疗耗材供应链公司', vendorType: '供应商', region: '西南地区', contactPerson: '刘采购', businessScope: '一次性耗材、防护用品' }
+                      ];
+                      
+                      Modal.info({
+                        title: '选择供应商',
+                        width: 900,
+                        content: (
+                          <Table
+                            dataSource={mockVendors}
+                            rowKey="id"
+                            rowSelection={{
+                              type: 'checkbox',
+                              onChange: (selectedRowKeys, selectedRows) => {
+                                console.log('选中的供应商:', selectedRows);
+                              },
+                            }}
+                            pagination={{
+                              pageSize: 10,
+                              showSizeChanger: true,
+                              showQuickJumper: true,
+                              showTotal: (total, range) => `共 ${total} 条记录，当前显示 ${range[0]}-${range[1]} 条`
+                            }}
+                            columns={[
+                              { title: '供应商编码', dataIndex: 'vendorCode', key: 'vendorCode', width: 120 },
+                              { title: '供应商名称', dataIndex: 'vendorName', key: 'vendorName', width: 200 },
+                              { title: '供应商类型', dataIndex: 'vendorType', key: 'vendorType', width: 100 },
+                              { title: '所属区域', dataIndex: 'region', key: 'region', width: 120 },
+                              { title: '联系人', dataIndex: 'contactPerson', key: 'contactPerson', width: 100 },
+                              { title: '经营范围', dataIndex: 'businessScope', key: 'businessScope', width: 200 }
+                            ]}
+                          />
+                        ),
+                      });
+                    }}
+                  >
+                    请选择供应商
+                  </Button>
+                </Form.Item>
+              </Col>
+            </Row>
+            
+            <Row gutter={16} align="middle">
+              <Col span={4} style={{ textAlign: 'right' }}>
+                <span>其他条件:</span>
+              </Col>
+              <Col span={20}>
+                <Button type="dashed" icon={<PlusOutlined />}>添加条件</Button>
+                <div className="text-sm text-gray-500 mt-1">来自模型白名单字段；支持继承到基准</div>
+              </Col>
+            </Row>
+            
             <Alert
               message="空基准行处理策略"
               description={
@@ -699,298 +960,203 @@ LIMIT 1000;`;
           </div>
         );
 
-      case 3: // 指标选择（实例化）
+
+
+      case 3: // 输出与样式
         return (
-          <div className="space-y-4">
-            <Form.Item
-               name="compareIndicatorId"
-               label="对比侧指标"
-               rules={[{ required: true, message: '请选择对比侧指标' }]}
-               extra="从模型'主数据集原子指标'挑选"
-             >
-              <Select placeholder="请选择对比侧指标">
-                {mockIndicators.filter(ind => ind.id.includes('agreement')).map(ind => (
-                  <Option key={ind.id} value={ind.id}>{ind.name}</Option>
-                ))}
-              </Select>
-            </Form.Item>
-            <Form.Item
-              name="baselineAliases"
-              label="基准别名"
-              rules={[{ required: true, message: '请至少选择一个基准别名' }]}
-              extra="决定启用哪些基准"
-            >
-              <Checkbox.Group>
-                <Row>
-                  <Col span={8}><Checkbox value="b1">b1 (历史最低)</Checkbox></Col>
-                  <Col span={8}><Checkbox value="b2">b2 (市场参考)</Checkbox></Col>
-                  <Col span={8}><Checkbox value="b3">b3 (招采最低)</Checkbox></Col>
-                </Row>
-              </Checkbox.Group>
-            </Form.Item>
-            <div>
-              <Text strong>计算指标</Text>
-              <div className="text-sm text-gray-500 mb-2">勾选要输出的计算指标（来自模型，含 *_b1/_b2 自动展开）</div>
-              <Table
-                size="small"
-                pagination={false}
-                columns={[
-                  {
-                    title: '选择',
-                    dataIndex: 'selected',
-                    width: 60,
-                    render: (_, record) => <Checkbox />
-                  },
-                  { title: 'ID', dataIndex: 'id', width: 120 },
-                  { title: '名称', dataIndex: 'name' },
-                  { title: '绑定模式', dataIndex: 'bindMode', width: 100 },
-                  { title: '可用后缀', dataIndex: 'suffixes', width: 120 },
-                  { title: '单位', dataIndex: 'unit', width: 80 },
-                  { title: '说明', dataIndex: 'description' }
-                ]}
-                dataSource={[
-                  {
-                    key: '1',
-                    id: 'ind_diff_amount',
-                    name: '差异额',
-                    bindMode: 'ALL',
-                    suffixes: '_b1, _b2, _b3',
-                    unit: '元',
-                    description: '对比侧价格与基准价格的差异金额'
-                  },
-                  {
-                    key: '2',
-                    id: 'ind_diff_rate',
-                    name: '差异率',
-                    bindMode: 'ALL',
-                    suffixes: '_b1, _b2, _b3',
-                    unit: '%',
-                    description: '对比侧价格与基准价格的差异比例'
-                  }
-                ]}
-              />
-            </div>
+          <div className="space-y-6">
             <Alert
-              message="说明"
-              description="计算列由模型定义，方案只做启用与基准勾选。勾选后将输出最终列名（如 ind_diff_rate_b1）"
+              message="透视表配置"
+              description="配置AntV/S2透视表的行列布局、数值字段和展示样式"
               type="info"
               showIcon
+              style={{ marginBottom: 24 }}
             />
-          </div>
-        );
-
-      case 4: // 规则与参数
-        return (
-          <div className="space-y-4">
-            <div>
-              <Text strong>规则类型</Text>
-              <div className="text-sm text-gray-500 mb-2">选择规则类型</div>
-              <Radio.Group defaultValue="control">
-                <Radio value="control">控制型</Radio>
-                <Radio value="scoring">评分型</Radio>
-              </Radio.Group>
-            </div>
-            <div>
-              <Text strong>规则实现</Text>
-              <div className="text-sm text-gray-500 mb-2">控制型：支持条件列表 AND/OR 组合</div>
-              <div className="space-y-2">
-                <div className="border p-3 rounded">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Text>条件列表：</Text>
-                    <Select defaultValue="AND" style={{ width: 80 }}>
-                      <Option value="AND">AND</Option>
-                      <Option value="OR">OR</Option>
-                    </Select>
+            
+            {/* 透视表结构配置 */}
+            <Card title="透视表结构" size="small" style={{ marginBottom: 16 }}>
+              <Row gutter={24}>
+                <Col span={8}>
+                  <div className="mb-4">
+                    <Text strong className="block mb-2">行字段 (Rows)</Text>
+                    <div className="text-xs text-gray-500 mb-2">拖拽字段到此区域作为行维度</div>
+                    <div className="border border-dashed border-gray-300 rounded p-3 min-h-[120px] bg-gray-50">
+                      <div className="space-y-2">
+                        <Tag color="blue">供应商</Tag>
+                        <Tag color="blue">采购组织</Tag>
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <Text>指标选择：</Text>
-                      <Select placeholder="支持计算指标，如差异率、差异额" style={{ width: 200 }}>
-                        <Option value="diff_rate">差异率</Option>
-                        <Option value="diff_amount">差异额</Option>
-                      </Select>
+                </Col>
+                <Col span={8}>
+                  <div className="mb-4">
+                    <Text strong className="block mb-2">列字段 (Columns)</Text>
+                    <div className="text-xs text-gray-500 mb-2">拖拽字段到此区域作为列维度</div>
+                    <div className="border border-dashed border-gray-300 rounded p-3 min-h-[120px] bg-gray-50">
+                      <div className="space-y-2">
+                        <Tag color="green">商品类别</Tag>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <Text>条件符号：</Text>
-                      <Select defaultValue=">" style={{ width: 100 }}>
-                        <Option value=">">&gt;</Option>
-                        <Option value="<">&lt;</Option>
-                        <Option value="=">=</Option>
-                        <Option value="!=">!=</Option>
-                        <Option value="BETWEEN">BETWEEN</Option>
-                        <Option value="IN">IN</Option>
-                      </Select>
+                  </div>
+                </Col>
+                <Col span={8}>
+                  <div className="mb-4">
+                    <Text strong className="block mb-2">数值字段 (Values)</Text>
+                    <div className="text-xs text-gray-500 mb-2">拖拽指标到此区域</div>
+                    <div className="border border-dashed border-gray-300 rounded p-3 min-h-[120px] bg-gray-50">
+                      <div className="space-y-2">
+                        <Tag color="orange">协议价</Tag>
+                        <Tag color="orange">差异率_b1</Tag>
+                        <Tag color="orange">差异额_b1</Tag>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <Text>阈值：</Text>
-                      <Input placeholder="数值输入值（支持百分比/货币自动格式）" style={{ width: 200 }} />
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Text>提示信息：</Text>
-                      <Input placeholder="文本" defaultValue="价格偏高" style={{ width: 150 }} />
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Text>严重程度：</Text>
-                      <Select defaultValue="high" style={{ width: 100 }}>
-                        <Option value="high">高/中/低</Option>
-                      </Select>
-                    </div>
-                    <div className="text-sm text-gray-500">
-                      示例：差异率 &gt; 0.1 → 显示 "价格偏高"
-                    </div>
+                  </div>
+                </Col>
+              </Row>
+              
+              <Divider style={{ margin: '16px 0' }} />
+              
+              <div className="mb-4">
+                <Text strong className="block mb-2">可用字段</Text>
+                <div className="border rounded p-3 bg-white">
+                  <div className="flex flex-wrap gap-2">
+                    <Tag className="cursor-pointer hover:bg-blue-100">供应商</Tag>
+                    <Tag className="cursor-pointer hover:bg-blue-100">采购组织</Tag>
+                    <Tag className="cursor-pointer hover:bg-blue-100">商品</Tag>
+                    <Tag className="cursor-pointer hover:bg-blue-100">商品类别</Tag>
+                    <Tag className="cursor-pointer hover:bg-blue-100">品牌</Tag>
+                    <Tag className="cursor-pointer hover:bg-orange-100">协议价</Tag>
+                    <Tag className="cursor-pointer hover:bg-orange-100">基准价格_b1</Tag>
+                    <Tag className="cursor-pointer hover:bg-orange-100">差异率_b1</Tag>
+                    <Tag className="cursor-pointer hover:bg-orange-100">差异额_b1</Tag>
                   </div>
                 </div>
               </div>
-            </div>
-            <div>
-              <Text strong>评分因子配置（评分型）</Text>
-              <div className="text-sm text-gray-500 mb-2">从引用的内置中选择可评分的指标</div>
-              <div className="space-y-2">
-                <div>为每个指标设置：</div>
-                <div className="ml-4 space-y-1">
-                  <div>- 权重（百分比）</div>
-                  <div>- 分值算法（区间打分 / 公式打分）</div>
-                  <div>- 区间分配置（如 0%-5% = 100分, 5%-10% = 80分）</div>
-                  <div>- 公式分配置（如 100 - (差异率*1000)）</div>
+            </Card>
+
+            {/* 展示配置 */}
+            <Card title="展示配置" size="small" style={{ marginBottom: 16 }}>
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item name="tableType" label="表格类型">
+                    <Select defaultValue="pivot" placeholder="选择表格类型">
+                      <Option value="pivot">透视表</Option>
+                      <Option value="table">明细表</Option>
+                      <Option value="tree">树形表</Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name="showTotals" label="显示汇总">
+                    <Switch defaultChecked />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name="showSubTotals" label="显示小计">
+                    <Switch defaultChecked />
+                  </Form.Item>
+                </Col>
+              </Row>
+              
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="orderBy" label="排序字段">
+                    <Select placeholder="请选择排序字段">
+                      <Option value="diff_rate_b1">差异率_b1</Option>
+                      <Option value="diff_amount_b1">差异额_b1</Option>
+                      <Option value="agreement_price">协议价</Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="orderDirection" label="排序方向">
+                    <Select placeholder="请选择排序方向">
+                      <Option value="desc">降序</Option>
+                      <Option value="asc">升序</Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+              </Row>
+            </Card>
+
+            {/* 样式配置 */}
+            <Card title="样式配置" size="small" style={{ marginBottom: 16 }}>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="theme" label="主题风格">
+                    <Select defaultValue="default" placeholder="选择主题">
+                      <Option value="default">默认</Option>
+                      <Option value="gray">简约灰</Option>
+                      <Option value="colorful">多彩</Option>
+                      <Option value="dark">深色</Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="cellSize" label="单元格大小">
+                    <Select defaultValue="default" placeholder="选择大小">
+                      <Option value="compact">紧凑</Option>
+                      <Option value="default">默认</Option>
+                      <Option value="loose">宽松</Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+              </Row>
+              
+              <div className="mb-4">
+                <Text strong className="block mb-2">条件格式</Text>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-2 border rounded">
+                     <span className="text-sm">差异率 {'>'} 10% 时高亮显示</span>
+                     <div className="flex items-center gap-2">
+                       <div className="w-4 h-4 bg-red-100 border border-red-300 rounded"></div>
+                       <Button size="small" type="link">编辑</Button>
+                     </div>
+                   </div>
+                   <div className="flex items-center justify-between p-2 border rounded">
+                     <span className="text-sm">差异率 {'<'} -5% 时标记为绿色</span>
+                     <div className="flex items-center gap-2">
+                       <div className="w-4 h-4 bg-green-100 border border-green-300 rounded"></div>
+                       <Button size="small" type="link">编辑</Button>
+                     </div>
+                   </div>
+                  <Button type="dashed" size="small" icon={<PlusOutlined />}>添加条件格式</Button>
                 </div>
               </div>
-            </div>
-          </div>
-        );
+            </Card>
 
-      case 5: // 输出与样式
-        return (
-          <div className="space-y-4">
-            <Alert
-              message="配置输出格式，包括列选择、排序和样式规则。"
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
-            <div>
-              <Text strong>输出列配置</Text>
-              <div className="text-sm text-gray-500 mb-2">拖拽调整列顺序</div>
-              <div className="mt-2 p-2 border border-dashed border-gray-300 rounded">
-                {outputColumns.map((column, index) => (
-                  <div
-                    key={column}
-                    className="p-2 mb-1 bg-blue-50 border border-blue-200 rounded flex justify-between items-center"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <Checkbox defaultChecked />
-                      <span>{column}</span>
+            {/* 导出配置 */}
+            <Card title="导出配置" size="small">
+              <Row gutter={16}>
+                <Col span={12}>
+                  <div>
+                    <Text strong className="block mb-2">导出格式</Text>
+                    <div className="space-x-4">
+                      <Form.Item name="exportExcel" valuePropName="checked" style={{ display: 'inline-block', marginBottom: 0 }}>
+                        <Checkbox defaultChecked>Excel</Checkbox>
+                      </Form.Item>
+                      <Form.Item name="exportCsv" valuePropName="checked" style={{ display: 'inline-block', marginBottom: 0 }}>
+                        <Checkbox>CSV</Checkbox>
+                      </Form.Item>
+                      <Form.Item name="exportApi" valuePropName="checked" style={{ display: 'inline-block', marginBottom: 0 }}>
+                        <Checkbox>API</Checkbox>
+                      </Form.Item>
                     </div>
-                    <Space>
-                      <Input size="small" placeholder="宽度" style={{ width: 80 }} />
-                      {index > 0 && (
-                        <Button
-                          size="small"
-                          icon={<ArrowUpOutlined />}
-                          onClick={() => {
-                            const newColumns = [...outputColumns];
-                            [newColumns[index], newColumns[index - 1]] = [newColumns[index - 1], newColumns[index]];
-                            setOutputColumns(newColumns);
-                          }}
-                        />
-                      )}
-                      {index < outputColumns.length - 1 && (
-                        <Button
-                          size="small"
-                          icon={<ArrowDownOutlined />}
-                          onClick={() => {
-                            const newColumns = [...outputColumns];
-                            [newColumns[index], newColumns[index + 1]] = [newColumns[index + 1], newColumns[index]];
-                            setOutputColumns(newColumns);
-                          }}
-                        />
-                      )}
-                    </Space>
                   </div>
-                ))}
-              </div>
-            </div>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item name="orderBy" label="默认排序">
-                  <Select placeholder="请选择排序字段">
-                    {outputColumns.map(col => (
-                      <Option key={col} value={col}>{col}</Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="orderDirection" label="排序方向">
-                  <Radio.Group>
-                    <Radio value="asc">升序 <ArrowUpOutlined /></Radio>
-                    <Radio value="desc">降序 <ArrowDownOutlined /></Radio>
-                  </Radio.Group>
-                </Form.Item>
-              </Col>
-            </Row>
-            <div>
-              <Text strong>样式规则</Text>
-              <div className="text-sm text-gray-500 mb-2">配置条件格式化样式</div>
-              <div className="space-y-2">
-                <div className="border p-3 rounded">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Text>规则名称：</Text>
-                    <Input placeholder="如：高风险标红" style={{ width: 150 }} />
-                  </div>
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Text>应用列：</Text>
-                    <Select placeholder="选择要应用样式的列" style={{ width: 200 }}>
-                      <Option value="diff_rate">差异率</Option>
-                      <Option value="price">价格</Option>
-                    </Select>
-                  </div>
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Text>条件：</Text>
-                    <Select defaultValue=">" style={{ width: 80 }}>
-                      <Option value=">">&gt;</Option>
-                      <Option value="<">&lt;</Option>
-                      <Option value="=">=</Option>
-                    </Select>
-                    <Input placeholder="阈值" style={{ width: 100 }} />
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Text>样式：</Text>
-                    <Select placeholder="选择样式" style={{ width: 150 }}>
-                      <Option value="red">红色背景</Option>
-                      <Option value="yellow">黄色背景</Option>
-                      <Option value="green">绿色背景</Option>
-                    </Select>
-                  </div>
-                </div>
-                <Button type="dashed" icon={<PlusOutlined />}>添加样式规则</Button>
-              </div>
-            </div>
-            <Divider>导出设置</Divider>
-            <Row gutter={16}>
-              <Col span={8}>
-                <Form.Item name="exportExcel" valuePropName="checked">
-                  <Checkbox>导出Excel</Checkbox>
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="exportCsv" valuePropName="checked">
-                  <Checkbox>导出CSV</Checkbox>
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="exportApi" valuePropName="checked">
-                  <Checkbox>提供API</Checkbox>
-                </Form.Item>
-              </Col>
-            </Row>
-            <div className="flex items-center space-x-2 mt-2">
-              <Text>文件名模板：</Text>
-              <Input placeholder="如：比价方案_{方案名}_{日期}" style={{ width: 250 }} />
-            </div>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="exportFileName" label="文件名模板">
+                    <Input placeholder="比价结果_{YYYY-MM-DD}" />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </Card>
           </div>
         );
 
-      case 6: // 预览与执行
+
+
+      case 4: // 预览与执行
         return (
           <div className="space-y-4">
             <Alert
@@ -1033,7 +1199,7 @@ LIMIT 1000;`;
           </div>
         );
 
-      case 7: // 调度与推送
+      case 5: // 调度与推送
         return (
           <div className="space-y-4">
             <Alert
@@ -1121,6 +1287,7 @@ LIMIT 1000;`;
           columns={columns}
           dataSource={schemes}
           rowKey="id"
+          scroll={{ x: 1200, y: 600 }}
           pagination={{
             total: schemes.length,
             pageSize: 10,
