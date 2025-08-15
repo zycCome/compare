@@ -28,7 +28,6 @@ import {
 } from 'lucide-react';
 
 const { Title, Text, Paragraph } = Typography;
-// const { TabPane } = Tabs; // 已废弃，使用items属性
 
 interface RecentScheme {
   id: string;

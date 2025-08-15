@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Layout as AntLayout, Menu, Button, Tooltip } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
-// import { cn } from '../lib/utils';
 import { navItems } from '../nav-items';
 
 const { Sider, Content } = AntLayout;

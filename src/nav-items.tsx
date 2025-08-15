@@ -1,10 +1,7 @@
 // Navigation items configuration
 import {
-  Home,
   Database,
   BarChart3,
-  Settings,
-  FileText,
   Target,
   TrendingUp,
   Calculator,
@@ -18,13 +15,10 @@ import AnalysisSubject from "./pages/AnalysisSubject";
 import DatasetManagement from "./pages/DatasetManagement";
 import DimensionManagement from "./pages/DimensionManagement";
 import MetricManagement from "./pages/MetricManagement";
-// import ReportManagement from "./pages/ReportManagement";
-import PriceModelManagement from "./pages/PriceModelManagement";
-import PriceSchemeManagement from "./pages/PriceSchemeManagement";
 import ReportCenter from "./pages/ReportCenter";
-import { default as PriceModel2Management } from "./pages/PriceModel2Management";
+import PriceModelManagement  from "./pages/PriceModelManagement";
 import PriceCompareRule from "./pages/PriceCompareRule";
-import PriceScheme2Management from "./pages/PriceScheme2Management";
+import PriceSchemeManagement from "./pages/PriceSchemeManagement";
 
 export interface NavItem {
   title: string;
@@ -73,35 +67,11 @@ export const navItems: NavItem[] = [
     icon: <Target className="h-4 w-4" />,
     component: MetricManagement,
 },
-// {
-//     title: "报表管理",
-//     to: "/report-management",
-//     icon: <BarChart3 className="h-4 w-4" />,
-//     component: ReportManagement,
-// },
 {
     title: "比价模型",
     to: "/price-model",
-    icon: <Settings className="h-4 w-4" />,
-    component: PriceModelManagement,
-},
-{
-    title: "比价方案",
-    to: "/price-scheme",
-    icon: <FileText className="h-4 w-4" />,
-    component: PriceSchemeManagement,
-},
-{
-    title: "比价分析中心",
-    to: "/report-center",
-    icon: <BarChart3 className="h-4 w-4" />,
-    component: ReportCenter,
-},
-{
-    title: "比价模型2",
-    to: "/price-model-2",
     icon: <Calculator className="h-4 w-4" />,
-    component: PriceModel2Management,
+    component: PriceModelManagement,
 },
 {
     title: "比价规则",
@@ -110,9 +80,15 @@ export const navItems: NavItem[] = [
     component: PriceCompareRule,
 },
 {
-    title: "比价方案2",
-    to: "/price-scheme-2",
+    title: "比价方案",
+    to: "/price-scheme",
     icon: <TrendingUp className="h-4 w-4" />,
-    component: PriceScheme2Management,
+    component: PriceSchemeManagement,
+},
+{
+    title: "比价分析中心",
+    to: "/report-center",
+    icon: <BarChart3 className="h-4 w-4" />,
+    component: ReportCenter,
 },
 ];
