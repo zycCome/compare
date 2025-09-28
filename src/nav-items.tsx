@@ -19,6 +19,8 @@ import ReportCenter from "./pages/ReportCenter";
 import PriceModelManagement  from "./pages/PriceModelManagement";
 import PriceCompareRule from "./pages/PriceCompareRule";
 import PriceSchemeManagement from "./pages/PriceSchemeManagement";
+import PriceSchemeManagementV2 from "./pages/PriceSchemeManagementV2";
+import ComparisonModelManagement from "./pages/ComparisonModelManagement";
 
 export interface NavItem {
   title: string;
@@ -84,6 +86,18 @@ export const navItems: NavItem[] = [
     to: "/price-scheme",
     icon: <TrendingUp className="h-4 w-4" />,
     component: PriceSchemeManagement,
+},
+{
+    title: "比价方案新版",
+    to: "/price-scheme-v2",
+    icon: <TrendingUp className="h-4 w-4" />,
+    component: PriceSchemeManagementV2,
+},
+{
+    title: "比对模型",
+    to: "/comparison-model",
+    icon: <Calculator className="h-4 w-4" />,
+    component: ComparisonModelManagement,
 },
 {
     title: "比价分析中心",
