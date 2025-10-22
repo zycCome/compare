@@ -8,9 +8,11 @@
     "build": "vite build --mode production",
     "build:dev": "vite build --mode development",
     "build:analyze": "vite build --mode analyze",
+    "build:gh-pages": "vite build --config vite.config.gh-pages.js",
     "preview": "vite preview",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
-    "serve": "serve -s dist -l 3000"
+    "serve": "serve -s dist -l 3000",
+    "deploy:pages": "node simple-deploy.js"
   },
   "dependencies": {
     "@antv/g2": "^5.4.1",
