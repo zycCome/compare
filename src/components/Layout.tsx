@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Layout as AntLayout, Menu, Button, Tooltip } from 'antd';
+import { Layout as AntLayout, Menu, Button, Tooltip, Divider } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { navItems } from '../nav-items';
 
@@ -14,15 +14,56 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
 
-  const menuItems = navItems.map((item) => ({
-    key: item.to,
-    icon: item.icon,
-    label: (
-      <Link to={item.to} className="text-inherit">
-        {item.title}
-      </Link>
-    ),
-  }));
+  // 按分组组织菜单项
+  const groupedNavItems = navItems.reduce((acc, item) => {
+    const group = item.group || '一期';
+    if (!acc[group]) {
+      acc[group] = [];
+    }
+    acc[group].push({
+      key: item.to,
+      icon: item.icon,
+      label: (
+        <Link to={item.to} className="text-inherit">
+          {item.title}
+        </Link>
+      ),
+    });
+    return acc;
+  }, {} as Record<string, Array<any>>);
+
+  // 生成分组的菜单项
+  const menuItems = [];
+  const groups = ['二期', '一期'];
+
+  groups.forEach((group, index) => {
+    if (groupedNavItems[group] && groupedNavItems[group].length > 0) {
+      // 添加分组标题
+      menuItems.push({
+        key: `group-${group}`,
+        label: collapsed ? (
+          <Tooltip title={group} placement="right">
+            <span className="font-semibold text-gray-600">{group.charAt(0)}</span>
+          </Tooltip>
+        ) : (
+          <span className="font-semibold text-gray-600 text-sm">{group}</span>
+        ),
+        disabled: true,
+        type: 'group' as const,
+      });
+
+      // 添加分组内的菜单项
+      menuItems.push(...groupedNavItems[group]);
+
+      // 如果不是最后一个分组，添加分隔符
+      if (index < groups.length - 1 && !collapsed) {
+        menuItems.push({
+          key: `divider-${group}`,
+          type: 'divider' as const,
+        });
+      }
+    }
+  });
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>

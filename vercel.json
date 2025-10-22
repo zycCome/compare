@@ -3,7 +3,8 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "env": {
-    "FORCE_BUILD": "true"
+    "FORCE_BUILD": "true",
+    "VITE_VERCEL": "true"
   },
   "rewrites": [
     {
