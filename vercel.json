@@ -6,7 +6,7 @@
     "FORCE_BUILD": "true",
     "VITE_VERCEL": "true"
   },
-  "rewrites": [
+    "rewrites": [
     {
       "source": "/(.*)",
       "destination": "/index.html"

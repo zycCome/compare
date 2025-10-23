@@ -652,6 +652,18 @@ const PriceSchemeManagementV2: React.FC = () => {
     { id: 'brand_v1', modelId: 'brand', name: '品牌比对模型', description: '按品牌维度进行比价分析', version: 'V1', isLatest: true }
   ];
 
+  // 版本号映射到友好描述
+  const getVersionDescription = (version: string): string => {
+    const versionMap: Record<string, string> = {
+      'V1': '标准版',
+      'V2': '高级版',
+      'V3': '专业版',
+      'V4': '企业版',
+      'V5': '旗舰版'
+    };
+    return versionMap[version] || version;
+  };
+
   const mockIndicators = [
     { id: 'agreement_price', name: '协议价格', unit: '元', description: '采购协议中的价格', expression: 'SUM(协议价格)' },
     { id: 'bid_price', name: '招标价格', unit: '元', description: '招标过程中的报价', expression: 'AVG(招标价格)' },
@@ -1109,11 +1121,8 @@ const PriceSchemeManagementV2: React.FC = () => {
                             if (!model) return option.label;
 
                             return (
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
-                                <span>{model.name}</span>
-                                <Tag color="blue" style={{ fontSize: '11px', margin: 0 }}>
-                                  {model.version}
-                                </Tag>
+                              <div style={{ padding: '4px 0' }}>
+                                {model.name}({getVersionDescription(model.version)})
                               </div>
                             );
                           }}
