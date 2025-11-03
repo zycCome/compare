@@ -1,29 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Form, Input, Select, Card, Button, Space, message, Divider, Tag, Popconfirm, Empty } from 'antd';
-import { TeamOutlined, DeleteOutlined, PlusOutlined, SearchOutlined, BankOutlined, EyeOutlined, EditOutlined, PlusCircleOutlined, MinusCircleOutlined, SettingOutlined } from '@ant-design/icons';
+import { TeamOutlined, DeleteOutlined, PlusOutlined, SearchOutlined, BankOutlined, EyeOutlined, EditOutlined, PlusCircleOutlined, MinusCircleOutlined, SettingOutlined, LoadingOutlined, UserAddOutlined } from '@ant-design/icons';
+import AddPermissionDialog, { PermissionLevel, OrganizationPermission, Organization } from './AddPermissionDialog';
 
 const { Option } = Select;
-
-// 权限级别枚举
-type PermissionLevel = 'view' | 'edit' | 'add_delete' | 'manage';
-
-// 组织权限接口
-interface OrganizationPermission {
-  id: string;
-  organizationId: string;
-  organizationName: string;
-  memberCount: number;
-  permissionLevel: PermissionLevel;
-}
-
-// 组织信息接口
-interface Organization {
-  id: string;
-  name: string;
-  memberCount: number;
-  parentId?: string;
-  level: number;
-}
 
 interface PermissionManagementDialogProps {
   open: boolean;
@@ -45,6 +25,10 @@ const PermissionManagementDialog: React.FC<PermissionManagementDialogProps> = ({
   const [permissions, setPermissions] = useState<OrganizationPermission[]>([]);
   const [isAddingOrg, setIsAddingOrg] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [operationLoading, setOperationLoading] = useState<string[]>([]);
+
+  // 新增权限弹窗状态
+  const [addPermissionDialogOpen, setAddPermissionDialogOpen] = useState(false);
 
   // 模拟组织数据
   const mockOrganizations: Organization[] = [
@@ -77,7 +61,7 @@ const PermissionManagementDialog: React.FC<PermissionManagementDialogProps> = ({
       organizationId: 'org3',
       organizationName: '采购部',
       memberCount: 12,
-      permissionLevel: 'add_delete'
+      permissionLevel: 'delete'
     }
   ];
 
@@ -85,27 +69,27 @@ const PermissionManagementDialog: React.FC<PermissionManagementDialogProps> = ({
   const permissionLevels = [
     {
       value: 'view' as PermissionLevel,
-      label: '👁️ 可查看',
+      label: '👁️ 仅可查看',
       color: '#1890ff',
-      description: '可查看报表内容和数据'
+      description: '仅可查看，不可修改、删除'
     },
     {
       value: 'edit' as PermissionLevel,
       label: '✏️ 可编辑',
       color: '#52c41a',
-      description: '可修改报表配置、筛选条件等'
+      description: '可查看/编辑'
     },
     {
-      value: 'add_delete' as PermissionLevel,
-      label: '➕🗑️ 可新增/删除',
+      value: 'delete' as PermissionLevel,
+      label: '🗑️ 可删除',
       color: '#fa8c16',
-      description: '可对报表数据进行增删操作'
+      description: '可查看/编辑/删除'
     },
     {
       value: 'manage' as PermissionLevel,
       label: '⚙️ 可管理',
       color: '#722ed1',
-      description: '可管理该报表的权限设置'
+      description: '可查看/编辑/删除/权限管理'
     }
   ];
 
@@ -138,6 +122,11 @@ const PermissionManagementDialog: React.FC<PermissionManagementDialogProps> = ({
         return;
       }
 
+      setLoading(true);
+
+      // 模拟API调用
+      await new Promise(resolve => setTimeout(resolve, 800));
+
       const newPermission: OrganizationPermission = {
         id: `perm_${Date.now()}`,
         organizationId: selectedOrg.id,
@@ -152,6 +141,9 @@ const PermissionManagementDialog: React.FC<PermissionManagementDialogProps> = ({
       message.success('添加组织权限成功');
     } catch (error) {
       console.error('保存失败:', error);
+      message.error('添加组织权限失败，请重试');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -160,31 +152,76 @@ const PermissionManagementDialog: React.FC<PermissionManagementDialogProps> = ({
     setIsAddingOrg(false);
   };
 
-  const handleDeletePermission = (organizationId: string) => {
-    setPermissions(prev => prev.filter(perm => perm.organizationId !== organizationId));
-    message.success('移除权限成功');
+  const handleDeletePermission = async (organizationId: string) => {
+    try {
+      setOperationLoading(prev => [...prev, organizationId]);
+
+      // 模拟API调用
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      setPermissions(prev => prev.filter(perm => perm.organizationId !== organizationId));
+      message.success('移除权限成功');
+    } catch (error) {
+      console.error('删除权限失败:', error);
+      message.error('删除权限失败，请重试');
+    } finally {
+      setOperationLoading(prev => prev.filter(id => id !== organizationId));
+    }
   };
 
-  const handlePermissionChange = (organizationId: string, newLevel: PermissionLevel | 'remove') => {
+  const handlePermissionChange = async (organizationId: string, newLevel: PermissionLevel | 'remove') => {
     if (newLevel === 'remove') {
       handleDeletePermission(organizationId);
       return;
     }
 
-    setPermissions(prev =>
-      prev.map(perm =>
-        perm.organizationId === organizationId
-          ? { ...perm, permissionLevel: newLevel }
-          : perm
-      )
-    );
-    message.success('权限修改成功');
+    try {
+      setOperationLoading(prev => [...prev, organizationId]);
+
+      // 模拟API调用
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      setPermissions(prev =>
+        prev.map(perm =>
+          perm.organizationId === organizationId
+            ? { ...perm, permissionLevel: newLevel }
+            : perm
+        )
+      );
+      message.success('权限修改成功');
+    } catch (error) {
+      console.error('权限修改失败:', error);
+      message.error('权限修改失败，请重试');
+    } finally {
+      setOperationLoading(prev => prev.filter(id => id !== organizationId));
+    }
   };
 
   const handleSave = () => {
-    onSave(permissions);
-    message.success('权限配置保存成功');
+    // 移除全局保存逻辑，改为实时保存
+    // 保留此函数以防止TypeScript错误
     onClose();
+  };
+
+  
+  // 获取未授权的组织列表
+  const getUnauthorizedOrganizations = () => {
+    return mockOrganizations.filter(org =>
+      !permissions.some(perm => perm.organizationId === org.id)
+    );
+  };
+
+  // 新增权限弹窗处理函数
+  const handleOpenAddPermissionDialog = () => {
+    setAddPermissionDialogOpen(true);
+  };
+
+  const handleCloseAddPermissionDialog = () => {
+    setAddPermissionDialogOpen(false);
+  };
+
+  const handleAddPermissions = (newPermissions: OrganizationPermission[]) => {
+    setPermissions(prev => [...prev, ...newPermissions]);
   };
 
   // 权限下拉菜单渲染
@@ -259,105 +296,28 @@ const PermissionManagementDialog: React.FC<PermissionManagementDialogProps> = ({
       onCancel={onClose}
       width={800}
       footer={[
-        <Button key="cancel" onClick={onClose}>
-          取消
-        </Button>,
-        <Button key="save" type="primary" onClick={handleSave}>
-          保存权限配置
+        <Button key="close" onClick={onClose}>
+          关闭
         </Button>,
       ]}
     >
       <div className="space-y-4">
-        {/* 添加组织区域 */}
-        <div className="bg-gray-50 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center">
-              <BankOutlined className="mr-2 text-gray-600" />
-              <span className="font-medium">添加组织权限</span>
-            </div>
-            {!isAddingOrg && (
-              <Button
-                type="dashed"
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={handleAddOrganization}
-              >
-                添加组织
-              </Button>
-            )}
+        {/* 顶部操作区域 */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <TeamOutlined className="mr-2 text-gray-600" />
+            <span className="font-medium">已授权组织</span>
+            <Tag className="ml-2">{permissions.length} 个组织</Tag>
           </div>
 
-          {isAddingOrg && (
-            <Form
-              form={form}
-              layout="inline"
-              className="space-y-3"
+          <div className="flex items-center space-x-3">
+            <Button
+              type="primary"
+              icon={<UserAddOutlined />}
+              onClick={handleOpenAddPermissionDialog}
             >
-              <Form.Item
-                name="organizationId"
-                rules={[{ required: true, message: '请选择组织' }]}
-                className="flex-1 mb-0"
-              >
-                <Select
-                  placeholder="选择组织"
-                  style={{ width: '100%' }}
-                  showSearch
-                  filterOption={(input, option) =>
-                    (option?.children as unknown as string)?.toLowerCase().includes(input.toLowerCase())
-                  }
-                >
-                  {mockOrganizations.map(org => (
-                    <Option
-                      key={org.id}
-                      value={org.id}
-                      disabled={permissions.some(p => p.organizationId === org.id)}
-                    >
-                      <div>
-                        <div>{org.name}</div>
-                        <div className="text-xs text-gray-500">共 {org.memberCount} 个成员</div>
-                      </div>
-                    </Option>
-                  ))}
-                </Select>
-              </Form.Item>
-
-              <Form.Item
-                name="permissionLevel"
-                rules={[{ required: true, message: '请选择权限级别' }]}
-                className="mb-0"
-              >
-                <Select placeholder="选择权限级别" style={{ width: 160 }}>
-                  {permissionLevels.map(level => (
-                    <Option key={level.value} value={level.value}>
-                      {level.label}
-                    </Option>
-                  ))}
-                </Select>
-              </Form.Item>
-
-              <div className="flex space-x-2">
-                <Button type="primary" size="small" onClick={handleSaveOrganization}>
-                  确定
-                </Button>
-                <Button size="small" onClick={handleCancelAdd}>
-                  取消
-                </Button>
-              </div>
-            </Form>
-          )}
-        </div>
-
-        <Divider className="my-4" />
-
-        {/* 已授权组织列表 */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center">
-              <TeamOutlined className="mr-2 text-gray-600" />
-              <span className="font-medium">已授权组织</span>
-              <Tag className="ml-2">{permissions.length} 个组织</Tag>
-            </div>
-
+              新增权限
+            </Button>
             <Input
               placeholder="搜索组织"
               prefix={<SearchOutlined />}
@@ -367,99 +327,144 @@ const PermissionManagementDialog: React.FC<PermissionManagementDialogProps> = ({
               allowClear
             />
           </div>
+        </div>
 
-          {filteredPermissions.length > 0 ? (
-            <div className="space-y-3">
-              {filteredPermissions.map(permission => {
-                const displayConfig = getPermissionDisplay(permission.permissionLevel);
-                return (
-                  <Card key={permission.id} size="small" className="permission-card">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center flex-1">
-                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
-                          <BankOutlined className="text-blue-600 text-lg" />
-                        </div>
-                        <div>
-                          <div className="font-medium text-gray-900">{permission.organizationName}</div>
-                        </div>
+        {/* 已授权组织列表 */}
+        {filteredPermissions.length > 0 ? (
+          <div className="space-y-3">
+            {filteredPermissions.map(permission => {
+              const displayConfig = getPermissionDisplay(permission.permissionLevel);
+              return (
+                <Card key={permission.id} size="small" className="permission-card">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center flex-1">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
+                        <BankOutlined className="text-blue-600 text-lg" />
                       </div>
+                      <div>
+                        <div className="font-medium text-gray-900">{permission.organizationName}</div>
+                        <div className="text-sm text-gray-500">共 {permission.memberCount} 个成员</div>
+                      </div>
+                    </div>
 
-                      <div className="flex items-center space-x-3">
-                        <Select
-                          value={permission.permissionLevel}
-                          onChange={(value) => handlePermissionChange(permission.organizationId, value)}
-                          style={{ width: 160 }}
-                          dropdownRender={(menu) => (
-                            <div>
-                              {permissionLevels.map(level => (
-                                <div
-                                  key={level.value}
-                                  onClick={() => handlePermissionChange(permission.organizationId, level.value)}
-                                  style={{
-                                    padding: '8px 12px',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    color: level.color
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor = '#f5f5f5';
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor = 'transparent';
-                                  }}
-                                >
-                                  <span style={{ marginRight: '8px' }}>{level.label.split(' ')[0]}</span>
-                                  <span>{level.label.split(' ')[1]}</span>
-                                </div>
-                              ))}
-                              <div style={{ margin: '4px 0', borderTop: '1px solid #f0f0f0' }} />
+                    <div className="flex items-center space-x-3">
+                      <Select
+                        value={permission.permissionLevel}
+                        onChange={(value) => handlePermissionChange(permission.organizationId, value)}
+                        style={{ width: 200 }}
+                        disabled={operationLoading.includes(permission.organizationId)}
+                        loading={operationLoading.includes(permission.organizationId)}
+                        dropdownRender={(menu) => (
+                          <div>
+                            {permissionLevels.map(level => (
                               <div
-                                onClick={() => handlePermissionChange(permission.organizationId, 'remove')}
+                                key={level.value}
+                                onClick={() => !operationLoading.includes(permission.organizationId) && handlePermissionChange(permission.organizationId, level.value)}
                                 style={{
                                   padding: '8px 12px',
-                                  cursor: 'pointer',
+                                  cursor: operationLoading.includes(permission.organizationId) ? 'not-allowed' : 'pointer',
                                   display: 'flex',
-                                  alignItems: 'center',
-                                  color: '#ff4d4f'
+                                  flexDirection: 'column',
+                                  color: level.color,
+                                  borderRadius: '4px',
+                                  opacity: operationLoading.includes(permission.organizationId) ? 0.5 : 1
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor = '#fff2f0';
+                                  if (!operationLoading.includes(permission.organizationId)) {
+                                    e.currentTarget.style.backgroundColor = '#f5f5f5';
+                                  }
                                 }}
                                 onMouseLeave={(e) => {
                                   e.currentTarget.style.backgroundColor = 'transparent';
                                 }}
                               >
-                                <span style={{ marginRight: '8px' }}>🗑️</span>
-                                <span>移除权限</span>
+                                <div style={{ fontWeight: 500, marginBottom: '2px' }}>
+                                  {level.label}
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#666', lineHeight: '1.3' }}>
+                                  {level.description}
+                                </div>
                               </div>
+                            ))}
+                            <div style={{ margin: '4px 0', borderTop: '1px solid #f0f0f0' }} />
+                            <div
+                              onClick={() => !operationLoading.includes(permission.organizationId) && handlePermissionChange(permission.organizationId, 'remove')}
+                              style={{
+                                padding: '8px 12px',
+                                cursor: operationLoading.includes(permission.organizationId) ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                color: '#ff4d4f',
+                                opacity: operationLoading.includes(permission.organizationId) ? 0.5 : 1
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!operationLoading.includes(permission.organizationId)) {
+                                  e.currentTarget.style.backgroundColor = '#fff2f0';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = 'transparent';
+                              }}
+                            >
+                              <span style={{ marginRight: '8px' }}>
+                                {operationLoading.includes(permission.organizationId) ? <LoadingOutlined spin /> : '🗑️'}
+                              </span>
+                              <span>
+                                {operationLoading.includes(permission.organizationId) ? '操作中...' : '移除权限'}
+                              </span>
                             </div>
-                          )}
-                        >
-                          {permissionLevels.map(level => (
-                            <Option key={level.value} value={level.value}>
-                              <span style={{ color: level.color }}>{level.label}</span>
-                            </Option>
-                          ))}
-                        </Select>
-                      </div>
+                          </div>
+                        )}
+                      >
+                        {permissionLevels.map(level => (
+                          <Option key={level.value} value={level.value}>
+                            <span style={{ color: level.color }}>
+                              {operationLoading.includes(permission.organizationId) && (
+                                <LoadingOutlined spin style={{ marginRight: 8 }} />
+                              )}
+                              {level.label}
+                            </span>
+                          </Option>
+                        ))}
+                      </Select>
                     </div>
-                  </Card>
-                );
-              })}
-            </div>
-          ) : (
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-8">
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               description={
                 searchText ? '未找到匹配的组织' : '暂无授权组织'
               }
-              className="py-8"
             />
-          )}
+            {!searchText && (
+              <div className="mt-4">
+                <Button
+                  type="primary"
+                  icon={<UserAddOutlined />}
+                  onClick={handleOpenAddPermissionDialog}
+                >
+                  添加第一个权限
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
         </div>
 
-              </div>
+      {/* 新增权限弹窗 */}
+      <AddPermissionDialog
+        open={addPermissionDialogOpen}
+        onClose={handleCloseAddPermissionDialog}
+        onAdd={handleAddPermissions}
+        existingPermissions={permissions}
+        organizations={mockOrganizations}
+      />
     </Modal>
   );
 };

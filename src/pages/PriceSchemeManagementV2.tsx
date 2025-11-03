@@ -1116,6 +1116,7 @@ const PriceSchemeManagementV2: React.FC = () => {
                           placeholder="请选择比对模型"
                           onChange={handleComparisonModelChange}
                           value={form.getFieldValue('comparisonModel')}
+                          optionLabelProp="label"
                           optionRender={(option) => {
                             const model = mockComparisonObjects.find(m => m.id === option.value);
                             if (!model) return option.label;
@@ -1131,7 +1132,7 @@ const PriceSchemeManagementV2: React.FC = () => {
                             <Option
                               key={model.id}
                               value={model.id}
-                              label={model.name}
+                              label={`${model.name}(${getVersionDescription(model.version)})`}
                             >
                               {model.name}
                             </Option>
