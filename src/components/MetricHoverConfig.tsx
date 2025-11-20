@@ -275,7 +275,7 @@ const MetricHoverConfig: React.FC<MetricHoverConfigProps> = ({
                               默认分组名称
                             </span>
                           }
-                          extra="此名称将用于未关联展示的指标分组"
+                          extra="此名称用于所有未启用分组展示指标的分组名称"
                         >
                           <Input
                             value={defaultGroupName}
@@ -348,6 +348,7 @@ const MetricHoverConfig: React.FC<MetricHoverConfigProps> = ({
               <Form.Item shouldUpdate={(prevValues, currentValues) => prevValues.groupEnabled !== currentValues.groupEnabled}>
                 {({ getFieldValue }) => {
                   const groupEnabled = getFieldValue('groupEnabled');
+                  const isMetric = item.type === 'metric'; // 比对指标
 
                   if (!groupEnabled) {
                     // 未启用分组时显示默认分组名称设置
@@ -359,7 +360,7 @@ const MetricHoverConfig: React.FC<MetricHoverConfigProps> = ({
                               默认分组名称
                             </span>
                           }
-                          extra="此名称将用于所有未配置分组的指标"
+                          extra="此名称用于所有未启用分组展示指标的分组名称"
                         >
                           <Input
                             value={defaultGroupName}
@@ -400,7 +401,7 @@ const MetricHoverConfig: React.FC<MetricHoverConfigProps> = ({
                       <Form.Item
                         name="attributes"
                         label="指标属性"
-                        extra="选择相关的维度字段作为指标的属性（可选）"
+                        extra="选择相关的属性来修饰指标"
                       >
                         <Select
                           mode="multiple"
@@ -429,11 +430,13 @@ const MetricHoverConfig: React.FC<MetricHoverConfigProps> = ({
                             独立分组
                           </span>
                         }
-                        extra="启用后，该指标将创建独立的分组展示，与其他指标分离"
+                        extra="启用独立分组后，指标分组将不在实际的列维度下展示，适用于基准指标"
                       >
                         <Switch
                           checkedChildren="启用"
                           unCheckedChildren="关闭"
+                          disabled={isMetric && groupEnabled}
+                          checked={isMetric && groupEnabled ? false : undefined}
                         />
                       </Form.Item>
                     </div>

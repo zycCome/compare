@@ -247,7 +247,7 @@ const MetricConfigDialog: React.FC<MetricConfigDialogProps> = ({
                     <Form.Item
                       name="attributes"
                       label="指标属性"
-                      extra="选择相关的维度字段作为指标的属性（可选）"
+                      extra="选择相关的属性来修饰指标"
                     >
                       <Select
                         mode="multiple"
@@ -270,12 +270,27 @@ const MetricConfigDialog: React.FC<MetricConfigDialogProps> = ({
                     <Form.Item
                       name="independentGroup"
                       label="独立分组"
-                      extra="启用后，该指标将创建独立的分组展示，与其他指标分离显示"
+                      extra="启用独立分组后，指标分组将不在实际的列维度下展示，适用于基准指标"
                     >
-                      <Switch
-                        checkedChildren="启用"
-                        unCheckedChildren="关闭"
-                      />
+                      <Form.Item noStyle shouldUpdate={(prevValues, currentValues) => prevValues.groupEnabled !== currentValues.groupEnabled}>
+                        {({ getFieldValue }) => {
+                          const groupEnabled = getFieldValue('groupEnabled');
+                          const isMetric = item.type === 'metric'; // 比对指标
+                          return (
+                            <Switch
+                              checkedChildren="启用"
+                              unCheckedChildren="关闭"
+                              disabled={isMetric && groupEnabled}
+                              checked={isMetric && groupEnabled ? false : getFieldValue('independentGroup')}
+                              onChange={(checked) => {
+                                if (!(isMetric && groupEnabled)) {
+                                  form.setFieldValue('independentGroup', checked);
+                                }
+                              }}
+                            />
+                          );
+                        }}
+                      </Form.Item>
                     </Form.Item>
                   </>
                 ) : null
