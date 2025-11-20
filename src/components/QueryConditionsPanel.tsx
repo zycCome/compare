@@ -50,7 +50,7 @@ export interface QueryConditionGroupData {
 export interface FieldMetadata {
   id: string;
   name: string;
-  type: 'dimension' | 'metric';
+  type: 'dimension' | 'metric' | 'baseline' | 'calculated';
   componentType: 'input' | 'select' | 'multiSelect' | 'dateRange' | 'numberRange' | 'modalSelector';
   options?: string[];
   placeholder?: string;

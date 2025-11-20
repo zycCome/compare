@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   Card,
   Button,
@@ -16,7 +16,10 @@ import {
   Select,
   Tabs,
   Form,
-  Input
+  Input,
+  Popover,
+  Switch,
+  InputNumber
 } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -37,11 +40,15 @@ import {
   FolderOpenOutlined,
   ApiOutlined,
   SafetyOutlined,
-  TeamOutlined
+  TeamOutlined,
+  SettingOutlined
 } from '@ant-design/icons';
 import PermissionManagementDialog from '../components/PermissionManagementDialog';
+import MetricConfigDialog from '../components/MetricConfigDialog';
+import MetricHoverConfig from '../components/MetricHoverConfig';
 import { SheetComponent } from '@antv/s2-react';
 import QueryConditionsPanel, { QueryCondition, FieldMetadata } from '../components/QueryConditionsPanel';
+import { EnhancedDroppedItem } from '../types/metric';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -56,9 +63,8 @@ interface ReportItem {
   description?: string;
 }
 
-interface DroppedItem extends ReportItem {
-  position: 'row' | 'column' | 'value';
-}
+// 使用扩展的 DroppedItem 类型
+type DroppedItem = EnhancedDroppedItem;
 
 const ReportPublish: React.FC = () => {
   const navigate = useNavigate();
@@ -80,8 +86,15 @@ const ReportPublish: React.FC = () => {
   const [isAddingGroup, setIsAddingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
 
+  // 默认分组名称状态
+  const [defaultGroupName, setDefaultGroupName] = useState<string>('');
+
   // 权限管理对话框状态
   const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
+
+  // 指标配置对话框状态
+  const [metricConfigDialogOpen, setMetricConfigDialogOpen] = useState(false);
+  const [currentMetricItem, setCurrentMetricItem] = useState<DroppedItem | null>(null);
 
   // 比价方案数据
   const [schemes] = useState([
@@ -153,6 +166,30 @@ const ReportPublish: React.FC = () => {
     setPermissionDialogOpen(false);
   };
 
+  // 指标配置相关函数
+  const handleOpenMetricConfigDialog = (item: DroppedItem) => {
+    setCurrentMetricItem(item);
+    setMetricConfigDialogOpen(true);
+  };
+
+  const handleCloseMetricConfigDialog = () => {
+    setMetricConfigDialogOpen(false);
+    setCurrentMetricItem(null);
+  };
+
+  const handleSaveMetricConfig = (config: any) => {
+    if (currentMetricItem) {
+      setDroppedItems(prev =>
+        prev.map(item =>
+          item.id === currentMetricItem.id
+            ? { ...item, metricConfig: config }
+            : item
+        )
+      );
+      message.success('指标配置已保存');
+    }
+  };
+
   const handleSavePermissions = (permissions: any[]) => {
     console.log('保存权限配置:', permissions);
     // 这里可以添加实际的保存逻辑
@@ -212,7 +249,16 @@ const ReportPublish: React.FC = () => {
     { id: 'met1', name: '中标价格', type: 'metric', componentType: 'numberRange', description: '产品中标价格' },
     { id: 'met2', name: '挂网价格', type: 'metric', componentType: 'numberRange', description: '平台挂网价格' },
     { id: 'met3', name: '采购量', type: 'metric', componentType: 'numberRange', description: '采购数量统计' },
-    { id: 'met4', name: '采购金额', type: 'metric', componentType: 'numberRange', description: '采购总金额' }
+    { id: 'met4', name: '采购金额', type: 'metric', componentType: 'numberRange', description: '采购总金额' },
+    // 基准指标
+    { id: 'base1', name: '平均价格', type: 'baseline', componentType: 'numberRange', description: '所有企业平均中标价格' },
+    { id: 'base2', name: '最低价格', type: 'baseline', componentType: 'numberRange', description: '所有企业最低中标价格' },
+    { id: 'base3', name: '市场基准价', type: 'baseline', componentType: 'numberRange', description: '行业市场基准价格' },
+    { id: 'base4', name: '历史均价', type: 'baseline', componentType: 'numberRange', description: '历史采购平均价格' },
+    // 计算指标
+    { id: 'calc1', name: '价差率', type: 'calculated', componentType: 'numberRange', description: '与基准价格的差异比率' },
+    { id: 'calc2', name: '价格指数', type: 'calculated', componentType: 'numberRange', description: '相对于基期的价格指数' },
+    { id: 'calc3', name: '节约金额', type: 'calculated', componentType: 'numberRange', description: '相比基准价格的节约金额' }
   ];
 
   // 预置查询条件（从比价方案配置中获取）
@@ -372,6 +418,16 @@ const ReportPublish: React.FC = () => {
     const isUsed = nodeData.itemData && usedItemIds.includes(nodeData.itemData.id);
     const isLeaf = nodeData.isLeaf;
 
+    // 获取已使用的指标配置
+    const getMetricConfig = (itemId: string) => {
+      const usedItem = droppedItems.find(item => item.id === itemId);
+      return usedItem?.metricConfig;
+    };
+
+    const nodeItem = nodeData.itemData;
+    const isMetric = nodeItem && ['metric', 'calculated', 'baseline'].includes(nodeItem.type);
+    const metricConfig = isMetric ? getMetricConfig(nodeItem.id) : null;
+
     return (
       <div
         className={`flex items-center h-6 px-2 rounded cursor-pointer transition-all
@@ -390,6 +446,41 @@ const ReportPublish: React.FC = () => {
         <span className={`text-sm ${isUsed ? 'text-gray-400' : 'text-gray-700'}`}>
           {nodeData.title}
         </span>
+
+        {/* 左侧面板的指标悬浮配置 */}
+        {isMetric && !isUsed && (
+          <MetricHoverConfig
+            item={{
+              id: nodeItem.id,
+              name: nodeItem.name,
+              type: nodeItem.type as 'metric' | 'calculated' | 'baseline',
+              metricConfig: metricConfig
+            }}
+            availableFields={availableFields}
+            defaultGroupName={defaultGroupName}
+            onDefaultGroupNameChange={setDefaultGroupName}
+            onSave={(config) => {
+              // 为左侧面板的指标保存预设配置，当拖拽时自动应用
+              console.log('预设指标配置:', nodeItem.name, config);
+              message.success(`已预设 ${nodeItem.name} 的配置`);
+            }}
+          >
+            <div
+              className="ml-auto mr-1 flex items-center justify-center w-4 h-4 rounded hover:bg-gray-200 transition-colors duration-200 cursor-help opacity-60 hover:opacity-100"
+              style={{
+                color: metricConfig ? '#2563eb' : '#9ca3af'
+              }}
+              title="预设指标配置"
+            >
+              <SettingOutlined
+                style={{
+                  fontSize: '10px'
+                }}
+              />
+            </div>
+          </MetricHoverConfig>
+        )}
+
         {isUsed && (
           <span className="ml-auto text-xs text-gray-400">已使用</span>
         )}
@@ -503,6 +594,11 @@ const ReportPublish: React.FC = () => {
     const columnItems = droppedItems.filter(item => item.position === 'column');
     const valueItems = droppedItems.filter(item => item.position === 'value');
 
+    // 检查是否有指标启用了分组展示
+    const hasGroupedMetrics = valueItems.some(item =>
+      item.metricConfig?.groupEnabled
+    );
+
     // 行维度始终包含固定的维度字段
     const allRowItems = [...fixedComparisonDimensions, ...rowItems];
 
@@ -519,6 +615,14 @@ const ReportPublish: React.FC = () => {
       { 'SKU编码': 'SKU004', '产品名称': '细菌鉴定仪D4', '产品类别': '微生物检测' }
     ];
 
+    // 获取分组名称的辅助函数
+    const getGroupName = (item: any) => {
+      if (item.metricConfig?.groupEnabled && item.metricConfig?.groupName) {
+        return item.metricConfig.groupName;
+      }
+      return defaultGroupName || '默认分组';
+    };
+
     mockSKUs.forEach(sku => {
       for (let i = 0; i < 2; i++) {
         const row: any = {
@@ -527,32 +631,70 @@ const ReportPublish: React.FC = () => {
           '产品类别': sku['产品类别']
         };
 
-        rowItems.forEach(item => {
-          row[item.name] = `${item.name}_${i + 1}`;
-        });
+        // 如果有指标启用了分组，添加指标分组列
+        if (hasGroupedMetrics) {
+          // 为每个指标生成对应的数据行
+          valueItems.forEach((item, index) => {
+            const metricRow = { ...row };
 
-        columnItems.forEach(item => {
-          row[item.name] = `${item.name}_类别${(i % 3) + 1}`;
-        });
+            rowItems.forEach(rowItem => {
+              metricRow[rowItem.name] = `${rowItem.name}_${i + 1}_${index}`;
+            });
 
-        valueItems.forEach(item => {
-          if (item.type === 'metric') {
-            row[item.name] = Math.floor(Math.random() * 10000) / 100;
-          } else if (item.type === 'calculated') {
-            row[item.name] = Math.floor(Math.random() * 100);
-          } else {
-            row[item.name] = `值${i + 1}`;
-          }
-        });
+            columnItems.forEach(columnItem => {
+              metricRow[columnItem.name] = `${columnItem.name}_类别${(i % 3) + 1}`;
+            });
 
-        mockData.push(row);
+            // 指标分组列
+            metricRow['指标分组'] = getGroupName(item);
+
+            // 指标值
+            if (item.type === 'metric') {
+              metricRow[item.name] = Math.floor(Math.random() * 10000) / 100;
+            } else if (item.type === 'calculated') {
+              metricRow[item.name] = Math.floor(Math.random() * 100);
+            } else {
+              metricRow[item.name] = `值${i + 1}_${index}`;
+            }
+
+            mockData.push(metricRow);
+          });
+        } else {
+          // 传统数据生成逻辑（无分组）
+          rowItems.forEach(item => {
+            row[item.name] = `${item.name}_${i + 1}`;
+          });
+
+          columnItems.forEach(item => {
+            row[item.name] = `${item.name}_类别${(i % 3) + 1}`;
+          });
+
+          valueItems.forEach(item => {
+            if (item.type === 'metric') {
+              row[item.name] = Math.floor(Math.random() * 10000) / 100;
+            } else if (item.type === 'calculated') {
+              row[item.name] = Math.floor(Math.random() * 100);
+            } else {
+              row[item.name] = `值${i + 1}`;
+            }
+          });
+
+          mockData.push(row);
+        }
       }
     });
 
+    // 构建字段配置
+    const rows = ['SKU编码', '产品名称', '产品类别', ...rowItems.map(item => item.name)];
+    const columns = hasGroupedMetrics
+      ? ['指标分组', ...columnItems.map(item => item.name)]
+      : columnItems.map(item => item.name);
+    const values = valueItems.map(item => item.name);
+
     const fields = {
-      rows: ['SKU编码', '产品名称', '产品类别', ...rowItems.map(item => item.name)],
-      columns: columnItems.map(item => item.name),
-      values: valueItems.map(item => item.name)
+      rows,
+      columns,
+      values
     };
 
     return { data: mockData, fields };
@@ -687,7 +829,57 @@ const ReportPublish: React.FC = () => {
       >
         <DragOutlined className="text-gray-400 mr-2 text-xs group-hover:text-blue-500" />
         {getTypeIcon(item.type)}
-        <span className="ml-2 text-sm flex-1">{item.name}</span>
+
+        {/* 指标名称区域 - 使用悬浮配置组件 */}
+        <div className="ml-2 text-sm flex-1 flex items-center">
+          <span
+            className="cursor-pointer transition-all duration-200 inline-block hover:text-blue-600 hover:font-semibold"
+          >
+            {item.name}
+          </span>
+
+          {/* 仅指标类型显示悬浮配置 */}
+          {(item.type === 'metric' || item.type === 'calculated' || item.type === 'baseline') ? (
+            <MetricHoverConfig
+              item={{
+                id: item.id,
+                name: item.name,
+                type: item.type as 'metric' | 'calculated' | 'baseline',
+                metricConfig: item.metricConfig
+              }}
+              availableFields={availableFields}
+              defaultGroupName={defaultGroupName}
+              onDefaultGroupNameChange={setDefaultGroupName}
+              onSave={(config) => {
+                setDroppedItems(prev =>
+                  prev.map(droppedItem =>
+                    droppedItem.id === item.id
+                      ? { ...droppedItem, metricConfig: config }
+                      : droppedItem
+                  )
+                );
+              }}
+            >
+              <div
+                className="ml-1 flex items-center justify-center w-5 h-5 rounded hover:bg-gray-100 transition-colors duration-200 cursor-help"
+                style={{
+                  color: item.metricConfig ? '#2563eb' : '#9ca3af'
+                }}
+              >
+                <SettingOutlined
+                  style={{
+                    fontSize: '12px',
+                    opacity: item.metricConfig ? 1 : 0.6
+                  }}
+                />
+                {item.metricConfig && (
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full"></div>
+                )}
+              </div>
+            </MetricHoverConfig>
+          ) : null}
+        </div>
+
         <Tag size="small" color={getPositionColor(item.position)} className="mr-2">
           {getPositionName(item.position)}
         </Tag>
@@ -721,7 +913,7 @@ const ReportPublish: React.FC = () => {
 
     const colorStyle = getColorStyle(color);
 
-      // 对于行维度，显示固定的维度字段 + 支持拖拽添加其他维度
+    // 对于行维度，显示固定的维度字段 + 支持拖拽添加其他维度
     if (position === 'row') {
       const rowItems = droppedItems.filter(item => item.position === 'row');
       const allRowItems = [...fixedComparisonDimensions, ...rowItems];
@@ -802,7 +994,45 @@ const ReportPublish: React.FC = () => {
                       {item.type === 'metric' && (
                         <span className="opacity-75">求和</span>
                       )}
-                      {item.name}
+                      <span>{item.name}</span>
+
+                      {/* 指标类型添加悬浮配置 */}
+                      {(item.type === 'metric' || item.type === 'calculated' || item.type === 'baseline') ? (
+                        <MetricHoverConfig
+                          item={{
+                            id: item.id,
+                            name: item.name,
+                            type: item.type as 'metric' | 'calculated' | 'baseline',
+                            metricConfig: item.metricConfig
+                          }}
+                          availableFields={availableFields}
+                          defaultGroupName={defaultGroupName}
+                          onDefaultGroupNameChange={setDefaultGroupName}
+                          onSave={(config) => {
+                            setDroppedItems(prev =>
+                              prev.map(droppedItem =>
+                                droppedItem.id === item.id
+                                  ? { ...droppedItem, metricConfig: config }
+                                  : droppedItem
+                              )
+                            );
+                          }}
+                        >
+                          <div
+                            className="ml-1 flex items-center justify-center w-3 h-3 rounded hover:bg-gray-100 transition-colors duration-200 cursor-help"
+                            style={{
+                              color: item.metricConfig ? '#2563eb' : '#d1d5db'
+                            }}
+                          >
+                            <SettingOutlined
+                              style={{
+                                fontSize: '10px',
+                                opacity: item.metricConfig ? 1 : 0.6
+                              }}
+                            />
+                          </div>
+                        </MetricHoverConfig>
+                      ) : null}
                     </div>
                     {/* 固定维度不显示删除按钮 */}
                     {!item.id.startsWith('comp-') && (
@@ -898,7 +1128,45 @@ const ReportPublish: React.FC = () => {
                     {item.type === 'metric' && (
                       <span className="opacity-75">求和</span>
                     )}
-                    {item.name}
+                    <span>{item.name}</span>
+
+                    {/* 指标类型添加悬浮配置 */}
+                    {(item.type === 'metric' || item.type === 'calculated' || item.type === 'baseline') ? (
+                      <MetricHoverConfig
+                        item={{
+                          id: item.id,
+                          name: item.name,
+                          type: item.type as 'metric' | 'calculated' | 'baseline',
+                          metricConfig: item.metricConfig
+                        }}
+                        availableFields={availableFields}
+                        defaultGroupName={defaultGroupName}
+                        onDefaultGroupNameChange={setDefaultGroupName}
+                        onSave={(config) => {
+                          setDroppedItems(prev =>
+                            prev.map(droppedItem =>
+                              droppedItem.id === item.id
+                                ? { ...droppedItem, metricConfig: config }
+                                : droppedItem
+                            )
+                          );
+                        }}
+                      >
+                        <div
+                          className="ml-1 flex items-center justify-center w-3 h-3 rounded hover:bg-gray-100 transition-colors duration-200 cursor-help"
+                          style={{
+                            color: item.metricConfig ? '#2563eb' : '#d1d5db'
+                          }}
+                        >
+                          <SettingOutlined
+                            style={{
+                              fontSize: '10px',
+                              opacity: item.metricConfig ? 1 : 0.6
+                            }}
+                          />
+                        </div>
+                      </MetricHoverConfig>
+                    ) : null}
                   </div>
                   <Button
                     type="text"
@@ -962,98 +1230,93 @@ const ReportPublish: React.FC = () => {
                   </div>
                 </div>
                 <div className="p-3 space-y-3">
-                  {/* 报表名称 */}
-                  <div>
-                    <div className="text-xs text-gray-600 mb-1">报表名称</div>
+                  <Form form={form} layout="vertical">
+                    {/* 报表名称 */}
                     <Form.Item
                       name="reportName"
                       rules={[{ required: true, message: '请输入报表名称' }]}
-                      className="mb-0"
+                      className="mb-3"
                     >
                       <Input
                         placeholder="请输入报表名称"
                         style={{ fontSize: '14px' }}
                       />
                     </Form.Item>
-                  </div>
 
-                  {/* 比价方案 */}
-                  <div>
-                    <div className="text-xs text-gray-600 mb-1">比价方案</div>
-                    <Form.Item
-                      name="schemeId"
-                      rules={[{ required: true, message: '请选择方案' }]}
-                      className="mb-0"
-                    >
-                      <Select
-                        onChange={handleSchemeChange}
-                        value={selectedScheme}
-                        placeholder="请选择比价方案"
-                        style={{ fontSize: '14px' }}
-                      >
-                        {schemes.map(scheme => (
-                          <Select.Option key={scheme.id} value={scheme.id}>
-                            {scheme.name}
-                          </Select.Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                  </div>
-
-                  {/* 报表分组 */}
-                  <div>
-                    <div className="text-xs text-gray-600 mb-1">报表分组</div>
-                    {!isAddingGroup ? (
-                      <Select
-                        value={selectedReportGroup}
-                        onChange={handleReportGroupChange}
-                        placeholder="选择分组"
-                        allowClear
-                        style={{ fontSize: '14px' }}
-                      >
-                        {reportGroups.map(group => (
-                          <Select.Option key={group} value={group}>
-                            {group}
-                          </Select.Option>
-                        ))}
-                        <Select.Option value="add_new" className="text-blue-600">
-                          <PlusOutlined className="mr-1" />
-                          添加新分组
-                        </Select.Option>
-                      </Select>
-                    ) : (
-                      <div className="flex items-center space-x-1">
-                        <Input
-                          value={newGroupName}
-                          onChange={(e) => setNewGroupName(e.target.value)}
-                          placeholder="输入新分组名称"
-                          style={{ fontSize: '14px' }}
-                          onPressEnter={handleAddNewGroup}
-                        />
-                        <Button size="small" type="primary" onClick={handleAddNewGroup}>
-                          确定
-                        </Button>
-                        <Button size="small" onClick={handleCancelAddGroup}>
-                          取消
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 描述 */}
-                  <div>
-                    <div className="text-xs text-gray-600 mb-1">描述</div>
                     <Form.Item
                       name="description"
                       className="mb-0"
                     >
                       <TextArea
                         placeholder="请输入报表描述"
-                        rows={2}
+                        rows={3}
                         style={{ fontSize: '14px' }}
                       />
                     </Form.Item>
-                  </div>
+                  </Form>
+                </div>
+
+                {/* 比价方案 */}
+                <div className="px-3 pb-3">
+                  <div className="text-xs text-gray-600 mb-1">比价方案</div>
+                  <Form.Item
+                    name="schemeId"
+                    rules={[{ required: true, message: '请选择方案' }]}
+                    className="mb-0"
+                  >
+                    <Select
+                      onChange={handleSchemeChange}
+                      value={selectedScheme}
+                      placeholder="请选择比价方案"
+                      style={{ fontSize: '14px' }}
+                    >
+                      {schemes.map(scheme => (
+                        <Select.Option key={scheme.id} value={scheme.id}>
+                          {scheme.name}
+                        </Select.Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                </div>
+
+                {/* 报表分组 */}
+                <div className="px-3 pb-3">
+                  <div className="text-xs text-gray-600 mb-1">报表分组</div>
+                  {!isAddingGroup ? (
+                    <Select
+                      value={selectedReportGroup}
+                      onChange={handleReportGroupChange}
+                      placeholder="选择分组"
+                      allowClear
+                      style={{ fontSize: '14px' }}
+                    >
+                      {reportGroups.map(group => (
+                        <Select.Option key={group} value={group}>
+                          {group}
+                        </Select.Option>
+                      ))}
+                      <Select.Option value="add_new" className="text-blue-600">
+                        <PlusOutlined className="mr-1" />
+                        添加新分组
+                      </Select.Option>
+                    </Select>
+                  ) : (
+                    <div className="flex items-center space-x-1">
+                      <Input
+                        value={newGroupName}
+                        onChange={(e) => setNewGroupName(e.target.value)}
+                        placeholder="输入新分组名称"
+                        style={{ fontSize: '14px' }}
+                        onPressEnter={handleAddNewGroup}
+                      />
+                      <Button size="small" type="primary" onClick={handleAddNewGroup}>
+                        确定
+                      </Button>
+                      <Button size="small" onClick={handleCancelAddGroup}>
+                        取消
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1171,6 +1434,22 @@ const ReportPublish: React.FC = () => {
           onClose={handleClosePermissionDialog}
           onSave={handleSavePermissions}
         />
+
+        {/* 指标配置对话框 */}
+        {currentMetricItem && (
+          <MetricConfigDialog
+            open={metricConfigDialogOpen}
+            item={{
+              id: currentMetricItem.id,
+              name: currentMetricItem.name,
+              type: currentMetricItem.type as 'metric' | 'calculated' | 'baseline',
+              metricConfig: currentMetricItem.metricConfig
+            }}
+            availableFields={availableFields}
+            onSave={handleSaveMetricConfig}
+            onClose={handleCloseMetricConfigDialog}
+          />
+        )}
       </Content>
     </Layout>
   );
