@@ -53,7 +53,8 @@ const ConditionSelector: React.FC<ConditionSelectorProps> = ({
       'datePicker': '日期选择',
       'dateRangePicker': '日期区间',
       'numberRange': '数值区间',
-      'modalSelector': '弹窗选择'
+      'modalSelector': '弹窗选择',
+      'metricCompare': '指标对比'
     };
     return typeMap[type] || '未知类型';
   };
@@ -67,7 +68,8 @@ const ConditionSelector: React.FC<ConditionSelectorProps> = ({
       'datePicker': 'orange',
       'dateRangePicker': 'orange',
       'numberRange': 'purple',
-      'modalSelector': 'geekblue'
+      'modalSelector': 'geekblue',
+      'metricCompare': 'magenta'
     };
     return colorMap[type] || 'default';
   };

@@ -31,6 +31,12 @@ interface DynamicConditionRendererProps {
   disabled?: boolean;
   editing?: boolean;
   inline?: boolean;
+  allFields?: Array<{
+    id: string;
+    name: string;
+    type: 'dimension' | 'metric' | 'baseline' | 'calculated';
+    componentType: string;
+  }>;
 }
 
 const DynamicConditionRenderer: React.FC<DynamicConditionRendererProps> = ({
@@ -39,13 +45,19 @@ const DynamicConditionRenderer: React.FC<DynamicConditionRendererProps> = ({
   onChange,
   disabled = false,
   editing = true,
-  inline = false
+  inline = false,
+  allFields = []
 }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedModalItems, setSelectedModalItems] = useState<string[]>([]);
 
   // 根据字段类型和组件类型渲染对应的控件
   const renderControl = () => {
+    // 指标比较控件
+    if (condition.componentType === 'metricCompare') {
+      return renderMetricCompare();
+    }
+
     // 指标类型固定为数值区间
     if (condition.fieldType === 'metric') {
       return renderNumberRange();
@@ -70,6 +82,63 @@ const DynamicConditionRenderer: React.FC<DynamicConditionRendererProps> = ({
       default:
         return renderTextInput();
     }
+  };
+
+  // 指标对比控件（两个指标 + 比较符）
+  const renderMetricCompare = () => {
+    const operator = value?.op || '=';
+    const leftMetricId = value?.leftMetricId || undefined;
+    const rightMetricId = value?.rightMetricId || undefined;
+
+    const metricOptions = allFields.filter(f => f.type === 'metric' || f.type === 'baseline');
+
+    const OperatorSelect = (
+      <Select
+        value={operator}
+        onChange={(op) => onChange({ ...value, op })}
+        disabled={disabled || !editing}
+        size="small"
+        style={inline ? { width: 60 } : { width: 100 }}
+      >
+        {['=', '≠', '>', '≥', '<', '≤'].map(op => (
+          <Option key={op} value={op}>{op}</Option>
+        ))}
+      </Select>
+    );
+
+    const MetricSelect = (currentId: string | undefined, onChangeId: (id: string) => void) => (
+      <Select
+        showSearch
+        placeholder={inline ? '指标' : '选择指标'}
+        value={currentId}
+        onChange={onChangeId}
+        disabled={disabled || !editing}
+        size="small"
+        style={inline ? { width: 120 } : { width: '40%' }}
+        filterOption={(input, option) =>
+          (option?.label as string).toLowerCase().includes(input.toLowerCase())
+        }
+        options={metricOptions.map(m => ({ value: m.id, label: m.name }))}
+      />
+    );
+
+    if (inline) {
+      return (
+        <Space size={4} align="center">
+          {MetricSelect(leftMetricId, (id) => onChange({ ...value, leftMetricId: id }))}
+          {OperatorSelect}
+          {MetricSelect(rightMetricId, (id) => onChange({ ...value, rightMetricId: id }))}
+        </Space>
+      );
+    }
+
+    return (
+      <Space style={{ width: '100%' }}>
+        {MetricSelect(leftMetricId, (id) => onChange({ ...value, leftMetricId: id }))}
+        {OperatorSelect}
+        {MetricSelect(rightMetricId, (id) => onChange({ ...value, rightMetricId: id }))}
+      </Space>
+    );
   };
 
   // 文本输入框
@@ -329,6 +398,8 @@ const DynamicConditionRenderer: React.FC<DynamicConditionRendererProps> = ({
   // 获取控件图标
   const getControlIcon = () => {
     switch (condition.componentType) {
+      case 'metricCompare':
+        return <NumberOutlined className="text-gray-400" />;
       case 'datePicker':
       case 'dateRangePicker':
         return <CalendarOutlined className="text-gray-400" />;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Form, Switch, Input, Select, Button, Space, Divider, InputNumber, message, Popover, Tooltip } from 'antd';
+import { Form, Switch, Input, Select, Button, Space, Divider, InputNumber, message, Popover, Tooltip, Radio } from 'antd';
 import { SettingOutlined, SaveOutlined, CloseOutlined, EditOutlined } from '@ant-design/icons';
 import { MetricConfig } from '../types/metric';
 import MetricConfigDialog from './MetricConfigDialog';
@@ -71,6 +71,7 @@ const MetricHoverConfig: React.FC<MetricHoverConfigProps> = ({
             groupName: '',
             attributes: [],
             independentGroup: false,
+            displayMode: 'detail',
             associationEnabled: false,
             associationTargetId: undefined
           };
@@ -165,6 +166,7 @@ const MetricHoverConfig: React.FC<MetricHoverConfigProps> = ({
           groupName: values.groupEnabled ? values.groupName.trim() : '',
           attributes: values.attributes || [],
           independentGroup: values.independentGroup || false,
+          displayMode: values.groupEnabled ? (values.displayMode || 'detail') : undefined,
           associationEnabled: false,
           associationTargetId: undefined
         };
@@ -236,6 +238,7 @@ const MetricHoverConfig: React.FC<MetricHoverConfigProps> = ({
           groupName: '',
           attributes: [],
           independentGroup: false,
+          displayMode: 'detail',
           associationEnabled: false,
           associationTargetId: undefined
         }}
@@ -332,7 +335,7 @@ const MetricHoverConfig: React.FC<MetricHoverConfigProps> = ({
                 name="groupEnabled"
                 label={
                   <span className="text-sm font-medium">
-                    启用分组展示
+                    分组展示
                   </span>
                 }
                 className="mb-4"
@@ -422,23 +425,24 @@ const MetricHoverConfig: React.FC<MetricHoverConfigProps> = ({
                         </Select>
                       </Form.Item>
 
-                      {/* 独立分组开关 */}
+                      {/* 展示模式选择 */}
                       <Form.Item
-                        name="independentGroup"
-                        label={
-                          <span className="text-sm font-medium">
-                            独立分组
-                          </span>
+                        name="displayMode"
+                        label="展示模式"
+                        extra={
+                          <div>
+                            <div>明细：满足该指标值的记录逐条展示，每条记录的属性分别占一行。</div>
+                            <div>汇总：在当前分组与列维度下，同一指标值合并为一行，所选属性列的值去重后以逗号拼接</div>
+                          </div>
                         }
-                        extra="启用独立分组后，指标分组将不在实际的列维度下展示，适用于基准指标"
                       >
-                        <Switch
-                          checkedChildren="启用"
-                          unCheckedChildren="关闭"
-                          disabled={isMetric && groupEnabled}
-                          checked={isMetric && groupEnabled ? false : undefined}
-                        />
+                        <Radio.Group>
+                          <Radio value="detail">明细展示</Radio>
+                          <Radio value="aggregate">汇总展示</Radio>
+                        </Radio.Group>
                       </Form.Item>
+
+                      
                     </div>
                   );
                 }}

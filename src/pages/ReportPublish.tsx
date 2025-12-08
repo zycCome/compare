@@ -250,6 +250,8 @@ const ReportPublish: React.FC = () => {
     { id: 'met2', name: '挂网价格', type: 'metric', componentType: 'numberRange', description: '平台挂网价格' },
     { id: 'met3', name: '采购量', type: 'metric', componentType: 'numberRange', description: '采购数量统计' },
     { id: 'met4', name: '采购金额', type: 'metric', componentType: 'numberRange', description: '采购总金额' },
+    // 指标对比（虚拟字段，用于添加“指标 vs 指标”条件）
+    { id: 'metric_compare', name: '指标对比', type: 'metric', componentType: 'metricCompare', description: '以两个指标之间的关系进行筛选' },
     // 基准指标
     { id: 'base1', name: '平均价格', type: 'baseline', componentType: 'numberRange', description: '所有企业平均中标价格' },
     { id: 'base2', name: '最低价格', type: 'baseline', componentType: 'numberRange', description: '所有企业最低中标价格' },
@@ -623,6 +625,9 @@ const ReportPublish: React.FC = () => {
       return defaultGroupName || '默认分组';
     };
 
+    // 展示属性名称映射（id -> name）
+    const attrNameById = new Map(availableFields.filter(f => f.type === 'dimension').map(f => [f.id, f.name]));
+
     mockSKUs.forEach(sku => {
       for (let i = 0; i < 2; i++) {
         const row: any = {
@@ -657,6 +662,18 @@ const ReportPublish: React.FC = () => {
               metricRow[item.name] = `值${i + 1}_${index}`;
             }
 
+            const attrIds = item.metricConfig?.attributes || [];
+            if (attrIds.length > 0) {
+              attrIds.forEach((id, idx) => {
+                const attrName = attrNameById.get(id);
+                if (!attrName) return;
+                const suppliers = ['供应商A', '供应商B', '供应商C'];
+                const modes = ['集中采购', '自行采购', '委托采购'];
+                const values = idx % 2 === 0 ? suppliers : modes;
+                metricRow[attrName] = values[(i + index) % values.length];
+              });
+            }
+
             mockData.push(metricRow);
           });
         } else {
@@ -684,10 +701,65 @@ const ReportPublish: React.FC = () => {
       }
     });
 
+    // 对启用“汇总展示”的指标进行聚合：相同指标值的多行合并，并将属性列用逗号拼接
+    if (hasGroupedMetrics) {
+      const aggregateItems = valueItems.filter(
+        (vi) => vi.metricConfig?.groupEnabled && vi.metricConfig?.displayMode === 'aggregate'
+      );
+
+      aggregateItems.forEach((aggItem) => {
+        const attrIds = aggItem.metricConfig?.attributes || [];
+        const attrNames = attrIds.map((id) => attrNameById.get(id)).filter(Boolean) as string[];
+        if (attrNames.length === 0) return;
+
+        const dataForItem = mockData.filter((r) => r['指标分组'] === getGroupName(aggItem) && r[aggItem.name] !== undefined);
+        const others = mockData.filter((r) => !(r['指标分组'] === getGroupName(aggItem) && r[aggItem.name] !== undefined));
+
+        const map = new Map<string, any>();
+        const keyFields = new Set<string>();
+        if (dataForItem.length > 0) {
+          Object.keys(dataForItem[0]).forEach((k) => {
+            if (!attrNames.includes(k)) keyFields.add(k);
+          });
+        }
+
+        dataForItem.forEach((row) => {
+          const key = Array.from(keyFields).map((k) => String(row[k])).join('|');
+          const existed = map.get(key);
+          if (!existed) {
+            const init: any = { ...row };
+            attrNames.forEach((n) => {
+              init[n] = row[n] ? String(row[n]) : '';
+            });
+            map.set(key, init);
+          } else {
+            attrNames.forEach((n) => {
+              const names = [existed[n], row[n]].filter(Boolean).join(',');
+              const unique = Array.from(new Set(names.split(',').filter(Boolean))).join(',');
+              existed[n] = unique;
+            });
+          }
+        });
+
+        const aggregatedRows = Array.from(map.values());
+        mockData.splice(0, mockData.length, ...others, ...aggregatedRows);
+      });
+    }
+
     // 构建字段配置
     const rows = ['SKU编码', '产品名称', '产品类别', ...rowItems.map(item => item.name)];
+    // 指标属性列纳入列维度，便于展示“供应商属性那列”
+    const groupedAttrNames = hasGroupedMetrics
+      ? Array.from(new Set(
+          valueItems
+            .filter((vi) => vi.metricConfig?.groupEnabled)
+            .flatMap((vi) => (vi.metricConfig?.attributes || []).map((id) => attrNameById.get(id)))
+            .filter(Boolean) as string[]
+        ))
+      : [];
+
     const columns = hasGroupedMetrics
-      ? ['指标分组', ...columnItems.map(item => item.name)]
+      ? ['指标分组', ...columnItems.map(item => item.name), ...groupedAttrNames]
       : columnItems.map(item => item.name);
     const values = valueItems.map(item => item.name);
 

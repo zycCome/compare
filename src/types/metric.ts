@@ -4,6 +4,7 @@ export interface MetricConfig {
   groupName: string;
   attributes: string[];
   independentGroup: boolean;
+  displayMode?: 'detail' | 'aggregate';
   associationEnabled?: boolean; // 计算指标的关联展示功能
   associationTargetId?: string; // 关联的目标指标ID（用于计算指标）
 }

@@ -28,6 +28,7 @@ interface QueryConditionGroupProps {
   onUpdateCondition: (conditionId: string, value: any) => void;
   onRemoveCondition: (conditionId: string) => void;
   onAddCondition: (field: FieldMetadata) => void;
+  allFields: FieldMetadata[];
 }
 
 const QueryConditionGroup: React.FC<QueryConditionGroupProps> = ({
@@ -36,7 +37,8 @@ const QueryConditionGroup: React.FC<QueryConditionGroupProps> = ({
   availableFields,
   onUpdateCondition,
   onRemoveCondition,
-  onAddCondition
+  onAddCondition,
+  allFields
 }) => {
   const [selectorVisible, setSelectorVisible] = useState(false);
   const [editingCondition, setEditingCondition] = useState<string | null>(null);
@@ -65,6 +67,25 @@ const QueryConditionGroup: React.FC<QueryConditionGroupProps> = ({
 
   // 渲染条件项（行内样式）
   const renderConditionInline = (condition: QueryCondition) => {
+    const renderTitle = () => {
+      if (condition.componentType === 'metricCompare') {
+        const leftId = (condition.value || {}).leftMetricId;
+        const rightId = (condition.value || {}).rightMetricId;
+        const op = (condition.value || {}).op || '=';
+        const findName = (id?: string) => {
+          if (!id) return '';
+          const f = allFields.find(ff => ff.id === id);
+          return f ? f.name : id;
+        };
+        const leftName = findName(leftId);
+        const rightName = findName(rightId);
+        if (leftName && rightName) {
+          return `${leftName} ${op} ${rightName}`;
+        }
+        return '请选择两个指标';
+      }
+      return condition.fieldName;
+    };
     return (
       <div
         key={condition.id}
@@ -79,7 +100,7 @@ const QueryConditionGroup: React.FC<QueryConditionGroupProps> = ({
         <span className={`text-xs font-medium whitespace-nowrap ${
           condition.isPredefined ? 'text-gray-600' : 'text-gray-800'
         }`}>
-          {condition.fieldName}
+          {renderTitle()}
         </span>
 
         {/* 分隔符 */}
@@ -94,6 +115,7 @@ const QueryConditionGroup: React.FC<QueryConditionGroupProps> = ({
             disabled={condition.isPredefined}
             editing={!condition.isPredefined}
             inline={true}
+            allFields={allFields}
           />
         </div>
 

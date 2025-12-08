@@ -209,28 +209,18 @@ const EnhancedMetricConfig: React.FC<EnhancedMetricConfigProps> = ({
         <div className="space-y-3">
           {/* 快速开关区域 */}
           <div className="bg-gray-50 rounded p-3">
-            <div className="text-xs font-medium text-gray-700 mb-2">快速配置</div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600">启用分组展示</span>
-                <Switch
-                  size="small"
-                  checked={tempConfig?.groupEnabled || false}
-                  onChange={(checked) => handleQuickToggle('groupEnabled')}
-                />
-              </div>
-              {tempConfig?.groupEnabled && (
+              <div className="text-xs font-medium text-gray-700 mb-2">快速配置</div>
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-600">独立分组</span>
+                <span className="text-xs text-gray-600">分组展示</span>
                   <Switch
                     size="small"
-                    checked={tempConfig?.independentGroup || false}
-                    onChange={(checked) => handleQuickToggle('independentGroup')}
+                    checked={tempConfig?.groupEnabled || false}
+                    onChange={(checked) => handleQuickToggle('groupEnabled')}
                   />
                 </div>
-              )}
+              </div>
             </div>
-          </div>
 
           {/* 分组名称 */}
           {tempConfig?.groupEnabled && (

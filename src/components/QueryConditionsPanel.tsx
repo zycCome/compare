@@ -33,7 +33,7 @@ export interface QueryCondition {
   groupType: 'comparison' | 'groupPrice' | 'historyPrice' | 'metric';
   value: any;
   isPredefined: boolean;
-  componentType: 'input' | 'select' | 'multiSelect' | 'dateRange' | 'numberRange' | 'modalSelector';
+  componentType: 'input' | 'select' | 'multiSelect' | 'dateRange' | 'numberRange' | 'modalSelector' | 'metricCompare';
   options?: string[]; // 用于select类型的选项
   placeholder?: string;
 }
@@ -51,7 +51,7 @@ export interface FieldMetadata {
   id: string;
   name: string;
   type: 'dimension' | 'metric' | 'baseline' | 'calculated';
-  componentType: 'input' | 'select' | 'multiSelect' | 'dateRange' | 'numberRange' | 'modalSelector';
+  componentType: 'input' | 'select' | 'multiSelect' | 'dateRange' | 'numberRange' | 'modalSelector' | 'metricCompare';
   options?: string[];
   placeholder?: string;
   description?: string;
@@ -278,6 +278,7 @@ const QueryConditionsPanel: React.FC<QueryConditionsPanelProps> = ({
                 onUpdateCondition={handleUpdateCondition}
                 onRemoveCondition={handleRemoveCondition}
                 onAddCondition={(field) => handleAddCondition(config.key as 'comparison' | 'groupPrice' | 'historyPrice' | 'metric', field)}
+                allFields={availableFields}
               />
             </Panel>
           );

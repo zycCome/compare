@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, Switch, Button, message, Select } from 'antd';
+import { Modal, Form, Input, Switch, Button, message, Select, Radio } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import { MetricConfig } from '../types/metric';
 
@@ -59,6 +59,7 @@ const MetricConfigDialog: React.FC<MetricConfigDialogProps> = ({
             groupName: '',
             attributes: [],
             independentGroup: false,
+            displayMode: 'detail',
             associationEnabled: false,
             associationTargetId: undefined
           };
@@ -112,6 +113,7 @@ const MetricConfigDialog: React.FC<MetricConfigDialogProps> = ({
           groupName: values.groupEnabled ? values.groupName.trim() : '',
           attributes: values.attributes || [],
           independentGroup: values.independentGroup || false,
+          displayMode: values.groupEnabled ? (values.displayMode || 'detail') : undefined,
           associationEnabled: false,
           associationTargetId: undefined
         };
@@ -156,6 +158,7 @@ const MetricConfigDialog: React.FC<MetricConfigDialogProps> = ({
           groupName: '',
           attributes: [],
           independentGroup: false,
+          displayMode: 'detail',
           associationEnabled: false,
           associationTargetId: undefined
         }}
@@ -211,7 +214,7 @@ const MetricConfigDialog: React.FC<MetricConfigDialogProps> = ({
           <>
             <Form.Item
               name="groupEnabled"
-              label="启用分组展示"
+              label="分组展示"
               extra="启用后，指标数据将按照指定分组进行展示和汇总"
             >
               <Switch
@@ -244,54 +247,46 @@ const MetricConfigDialog: React.FC<MetricConfigDialogProps> = ({
                       />
                     </Form.Item>
 
-                    <Form.Item
-                      name="attributes"
-                      label="指标属性"
-                      extra="选择相关的属性来修饰指标"
-                    >
-                      <Select
-                        mode="multiple"
-                        placeholder="请选择指标属性（可选）"
-                        style={{ width: '100%' }}
-                        maxTagCount={3}
-                        allowClear
-                      >
-                        {attributeOptions.map(field => (
-                          <Select.Option key={field.id} value={field.id}>
-                            <div>
-                              <div className="font-medium">{field.name}</div>
-                              <div className="text-xs text-gray-500">{field.description}</div>
-                            </div>
-                          </Select.Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
+                <Form.Item
+                  name="attributes"
+                  label="指标属性"
+                  extra="选择相关的属性来修饰指标"
+                >
+                  <Select
+                    mode="multiple"
+                    placeholder="请选择指标属性（可选）"
+                    style={{ width: '100%' }}
+                    maxTagCount={3}
+                    allowClear
+                  >
+                    {attributeOptions.map(field => (
+                      <Select.Option key={field.id} value={field.id}>
+                        <div>
+                          <div className="font-medium">{field.name}</div>
+                          <div className="text-xs text-gray-500">{field.description}</div>
+                        </div>
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Form.Item>
 
-                    <Form.Item
-                      name="independentGroup"
-                      label="独立分组"
-                      extra="启用独立分组后，指标分组将不在实际的列维度下展示，适用于基准指标"
-                    >
-                      <Form.Item noStyle shouldUpdate={(prevValues, currentValues) => prevValues.groupEnabled !== currentValues.groupEnabled}>
-                        {({ getFieldValue }) => {
-                          const groupEnabled = getFieldValue('groupEnabled');
-                          const isMetric = item.type === 'metric'; // 比对指标
-                          return (
-                            <Switch
-                              checkedChildren="启用"
-                              unCheckedChildren="关闭"
-                              disabled={isMetric && groupEnabled}
-                              checked={isMetric && groupEnabled ? false : getFieldValue('independentGroup')}
-                              onChange={(checked) => {
-                                if (!(isMetric && groupEnabled)) {
-                                  form.setFieldValue('independentGroup', checked);
-                                }
-                              }}
-                            />
-                          );
-                        }}
-                      </Form.Item>
-                    </Form.Item>
+                <Form.Item
+                  name="displayMode"
+                  label="展示模式"
+                  extra={
+                    <div>
+                      <div>明细：满足该指标值的记录逐条展示，每条记录的属性分别占一行。</div>
+                      <div>汇总：在当前分组与列维度下，同一指标值合并为一行，所选属性列的值去重后以逗号拼接</div>
+                    </div>
+                  }
+                >
+                  <Radio.Group>
+                    <Radio value="detail">明细展示</Radio>
+                    <Radio value="aggregate">汇总展示</Radio>
+                  </Radio.Group>
+                </Form.Item>
+
+                    
                   </>
                 ) : null
               }
