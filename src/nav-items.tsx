@@ -27,6 +27,7 @@ import PriceSchemeManagementV2 from "./pages/PriceSchemeManagementV2";
 import ComparisonModelManagement from "./pages/ComparisonModelManagement";
 import ComparisonModelManagementV2 from "./pages/ComparisonModelManagementV2";
 import PriceComparisonReports from "./pages/PriceComparisonReports";
+import MonitoringManagement from "./pages/MonitoringManagement";
 
 
 export interface NavItem {
@@ -151,6 +152,13 @@ export const navItems: NavItem[] = [
     to: "/report-center-v2",
     icon: <FileText className="h-4 w-4" />,
     component: PriceComparisonReports,
+    group: "二期",
+},
+{
+    title: "监控预警管理",
+    to: "/monitoring-management",
+    icon: <Activity className="h-4 w-4" />,
+    component: MonitoringManagement,
     group: "二期",
 },
 ];

@@ -1,0 +1,4 @@
+{
+  "claude-code.showTokenUsage": true,
+  "claude-code.statusBar.tokenCount": true
+}

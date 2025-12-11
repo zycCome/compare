@@ -1395,7 +1395,7 @@ const ReportPublish: React.FC = () => {
               {/* 可用字段面板 */}
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <Title level={4} className="mb-0 text-sm">可用字段</Title>
+                  <Title level={4} className="mb-0 text-sm">可用字段2</Title>
                   <Text type="secondary" className="text-xs">
                     拖拽到右侧进行配置
                   </Text>

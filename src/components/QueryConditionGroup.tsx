@@ -22,7 +22,7 @@ import { QueryCondition, FieldMetadata } from './QueryConditionsPanel';
 
 
 interface QueryConditionGroupProps {
-  type: 'comparison' | 'groupPrice' | 'historyPrice' | 'metric';
+  type: 'comparison' | 'groupPrice' | 'historyPrice';
   conditions: QueryCondition[];
   availableFields: FieldMetadata[];
   onUpdateCondition: (conditionId: string, value: any) => void;
@@ -56,8 +56,6 @@ const QueryConditionGroup: React.FC<QueryConditionGroupProps> = ({
         return { color: 'green', bgColor: '#f6ffed' };
       case 'historyPrice':
         return { color: 'purple', bgColor: '#f9f0ff' };
-      case 'metric':
-        return { color: 'orange', bgColor: '#fff7e6' };
       default:
         return { color: 'default', bgColor: '#f5f5f5' };
     }
@@ -158,7 +156,7 @@ const QueryConditionGroup: React.FC<QueryConditionGroupProps> = ({
       <ConditionSelector
         visible={selectorVisible}
         fields={availableFields}
-        title={`选择${type === 'metric' ? '指标' : '维度'}字段`}
+        title="选择维度字段"
         onFieldSelect={(field) => {
           onAddCondition(field);
           setSelectorVisible(false);

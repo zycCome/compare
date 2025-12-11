@@ -30,7 +30,7 @@ export interface QueryCondition {
   fieldId: string;
   fieldName: string;
   fieldType: 'dimension' | 'metric';
-  groupType: 'comparison' | 'groupPrice' | 'historyPrice' | 'metric';
+  groupType: 'comparison' | 'groupPrice' | 'historyPrice';
   value: any;
   isPredefined: boolean;
   componentType: 'input' | 'select' | 'multiSelect' | 'dateRange' | 'numberRange' | 'modalSelector' | 'metricCompare';
@@ -40,7 +40,7 @@ export interface QueryCondition {
 
 // 查询条件分组接口
 export interface QueryConditionGroupData {
-  type: 'comparison' | 'groupPrice' | 'historyPrice' | 'metric';
+  type: 'comparison' | 'groupPrice' | 'historyPrice';
   title: string;
   description: string;
   conditions: QueryCondition[];
@@ -74,7 +74,7 @@ const QueryConditionsPanel: React.FC<QueryConditionsPanelProps> = ({
   predefinedConditions = [],
   loading = false
 }) => {
-  const [activeGroups, setActiveGroups] = useState<string[]>(['comparison', 'groupPrice', 'historyPrice', 'metric']);
+  const [activeGroups, setActiveGroups] = useState<string[]>(['comparison', 'groupPrice', 'historyPrice']);
   const [selectorVisible, setSelectorVisible] = useState<string | null>(null);
 
   // 按分组类型组织条件
@@ -82,8 +82,7 @@ const QueryConditionsPanel: React.FC<QueryConditionsPanelProps> = ({
     const groups: Record<string, QueryCondition[]> = {
       comparison: [],
       groupPrice: [],
-      historyPrice: [],
-      metric: []
+      historyPrice: []
     };
 
     // 处理用户添加的条件
@@ -205,13 +204,7 @@ const QueryConditionsPanel: React.FC<QueryConditionsPanelProps> = ({
       icon: <SettingOutlined className="text-purple-600" />,
       color: 'purple'
     },
-    {
-      key: 'metric',
-      title: '指标',
-      description: '设置指标的数值区间条件',
-      icon: <FilterOutlined className="text-orange-600" />,
-      color: 'orange'
-    }
+    // 指标分组已下沉到预警规则中，这里只负责范围类维度条件
   ];
 
   if (!visible) {
@@ -265,19 +258,14 @@ const QueryConditionsPanel: React.FC<QueryConditionsPanelProps> = ({
               }
             >
               <QueryConditionGroup
-                type={config.key as 'comparison' | 'groupPrice' | 'historyPrice' | 'metric'}
+                type={config.key as 'comparison' | 'groupPrice' | 'historyPrice'}
                 conditions={groupConditions}
-                availableFields={availableFields.filter(field => {
-                  // 比对对象、集团价、历史价主要是维度，指标分组主要是指标
-                  if (config.key === 'metric') {
-                    return field.type === 'metric' && !usedFieldIds.includes(field.id);
-                  } else {
-                    return field.type === 'dimension' && !usedFieldIds.includes(field.id);
-                  }
-                })}
+                availableFields={availableFields.filter(field =>
+                  field.type === 'dimension' && !usedFieldIds.includes(field.id)
+                )}
                 onUpdateCondition={handleUpdateCondition}
                 onRemoveCondition={handleRemoveCondition}
-                onAddCondition={(field) => handleAddCondition(config.key as 'comparison' | 'groupPrice' | 'historyPrice' | 'metric', field)}
+                onAddCondition={(field) => handleAddCondition(config.key as 'comparison' | 'groupPrice' | 'historyPrice', field)}
                 allFields={availableFields}
               />
             </Panel>
@@ -285,21 +273,6 @@ const QueryConditionsPanel: React.FC<QueryConditionsPanelProps> = ({
         })}
       </Collapse>
 
-      {conditions.length === 0 && predefinedConditions.length === 0 && (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="暂无查询条件"
-          className="py-4"
-        >
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setSelectorVisible('comparison')}
-          >
-            添加查询条件
-          </Button>
-        </Empty>
-      )}
     </Card>
   );
 };
