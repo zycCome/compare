@@ -19,7 +19,9 @@ import {
   TimePicker,
   Tree,
   InputNumber,
-  Switch
+  Switch,
+  Modal,
+  Checkbox
 } from 'antd';
 import {
   PlusOutlined,
@@ -27,7 +29,6 @@ import {
   DeleteOutlined,
   WarningOutlined,
   CheckCircleOutlined,
-  BellOutlined,
   PlayCircleOutlined,
   PauseCircleOutlined,
   ExclamationCircleOutlined
@@ -55,8 +56,18 @@ interface MonitorTask {
   rules: any[];
   enabled: boolean;
   lastCheck: string;
-  alertCount: number;
+  monthlyAlertCount: number;
   severity: 'low' | 'medium' | 'high' | 'critical';
+  ruleSummary: string;
+  scheduleSummary: string;
+}
+
+interface AlertNotificationResult {
+  id: string;
+  channel: 'email' | 'dingtalk' | 'wechat';
+  target: string;
+  status: 'success' | 'failed' | 'pending';
+  detail?: string;
 }
 
 interface AlertRecord {
@@ -64,11 +75,12 @@ interface AlertRecord {
   taskId: string;
   taskName: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
-  message: string;
-  value: number;
-  threshold: number;
+  ruleSummary: string;
+  hitCount: number;
+  dimensionValues: string[];
   timestamp: string;
   status: 'active' | 'acknowledged' | 'resolved';
+  notifications: AlertNotificationResult[];
 }
 
 interface ReportFieldItem {
@@ -96,6 +108,10 @@ const MonitoringManagement: React.FC = () => {
   const [form] = Form.useForm();
   const [expandedKeys, setExpandedKeys] = useState<string[]>(['dimension', 'metric', 'calculated', 'baseline']);
   const [activeInputField, setActiveInputField] = useState<'alertTitle' | 'alertContent' | 'noAlertTitle' | 'noAlertContent' | null>(null);
+  const [alertDetail, setAlertDetail] = useState<AlertRecord | null>(null);
+  const [alertDetailVisible, setAlertDetailVisible] = useState(false);
+  const [notificationDetailRecord, setNotificationDetailRecord] = useState<AlertRecord | null>(null);
+  const [notificationDetailVisible, setNotificationDetailVisible] = useState(false);
 
   // 可用模板变量
   const templateVariables = [
@@ -126,23 +142,24 @@ const MonitoringManagement: React.FC = () => {
     }
   };
 
-  // 测试发送通知（基于当前卡片选择的渠道）
-  const handleTestNotification = (channel?: 'email' | 'dingtalk' | 'wecom') => {
-    if (!channel) {
-      message.warning('请选择渠道类型后再测试发送');
-      return;
-    }
-    const channelNames = { email: '邮件', dingtalk: '钉钉', wecom: '企业微信' };
-    message.success(`已发送${channelNames[channel]}测试消息（示例，实际需接入后端）`);
+  const handleViewResult = (task: MonitorTask) => {
+    // 将任务的关键信息写入表单，用于预览页展示
+    form.setFieldsValue({
+      taskName: task.name,
+      schemeId: task.schemeId,
+      severity: task.severity
+    });
+    setViewMode('preview');
   };
 
-  // 邮件批量粘贴处理（针对 Form.List 的每一项）
-  const handleEmailPaste = (e: React.ClipboardEvent<HTMLInputElement>, fieldIndex: number) => {
-    e.preventDefault();
-    const pastedText = e.clipboardData.getData('text');
-    const emails = pastedText.split(/[,;、\s]+/).filter(Boolean);
-    const current: string[] = form.getFieldValue(['notificationChannels', fieldIndex, 'emails']) || [];
-    form.setFieldValue(['notificationChannels', fieldIndex, 'emails'], [...current, ...emails]);
+  const handleViewAlertDetail = (record: AlertRecord) => {
+    setAlertDetail(record);
+    setAlertDetailVisible(true);
+  };
+
+  const handleViewNotificationDetail = (record: AlertRecord) => {
+    setNotificationDetailRecord(record);
+    setNotificationDetailVisible(true);
   };
 
   const monitorTasks: MonitorTask[] = [
@@ -156,9 +173,11 @@ const MonitoringManagement: React.FC = () => {
       metrics: ['含税价', '差异率'],
       rules: [],
       enabled: true,
-      lastCheck: '10分钟前',
-      alertCount: 3,
-      severity: 'high'
+      lastCheck: '2025-12-12 08:50:00',
+      monthlyAlertCount: 12,
+      severity: 'high',
+      ruleSummary: '满足所有条件 · 2 个指标条件',
+      scheduleSummary: '每天 10:00 执行'
     },
     {
       id: '2',
@@ -170,9 +189,11 @@ const MonitoringManagement: React.FC = () => {
       metrics: ['协议价', '市场价', '差异额'],
       rules: [],
       enabled: false,
-      lastCheck: '2小时前',
-      alertCount: 0,
-      severity: 'medium'
+      lastCheck: '2025-12-12 07:05:00',
+      monthlyAlertCount: 4,
+      severity: 'medium',
+      ruleSummary: '满足任一条件 · 1 个指标条件',
+      scheduleSummary: '每周一/三 09:30 执行'
     }
   ];
 
@@ -182,22 +203,73 @@ const MonitoringManagement: React.FC = () => {
       taskId: '1',
       taskName: 'CPU价格异常监控',
       severity: 'high',
-      message: 'Intel i9-14900K 价格上涨 23%，超过阈值 15%',
-      value: 23,
-      threshold: 15,
-      timestamp: '5分钟前',
-      status: 'active'
+      ruleSummary: '差异率 > 15%',
+      hitCount: 32,
+      dimensionValues: ['供应商: Intel', '物料编码: i9-14900K'],
+      timestamp: '2025-12-12 08:55:00',
+      status: 'active',
+      notifications: [
+        { id: 'n1', channel: 'email', target: 'buyer1@example.com', status: 'success' },
+        { id: 'n2', channel: 'email', target: 'buyer2@example.com', status: 'success' },
+        { id: 'n3', channel: 'dingtalk', target: '钉钉机器人A', status: 'success' }
+      ]
     },
     {
       id: '2',
       taskId: '1',
       taskName: 'CPU价格异常监控',
       severity: 'medium',
-      message: 'AMD Ryzen 7 价格上涨 12%',
-      value: 12,
-      threshold: 10,
-      timestamp: '30分钟前',
-      status: 'acknowledged'
+      ruleSummary: '差异率 > 10%',
+      hitCount: 18,
+      dimensionValues: ['供应商: AMD', '物料编码: Ryzen 7'],
+      timestamp: '2025-12-12 08:30:00',
+      status: 'active',
+      notifications: [
+        { id: 'n4', channel: 'email', target: 'buyer1@example.com', status: 'failed', detail: 'SMTP 连接超时' },
+        { id: 'n5', channel: 'wechat', target: '企微机器人A', status: 'pending' }
+      ]
+    },
+    {
+      id: '3',
+      taskId: '2',
+      taskName: '供应商协议价监控',
+      severity: 'medium',
+      ruleSummary: '协议价需人工确认',
+      hitCount: 5,
+      dimensionValues: ['供应商: A集团'],
+      timestamp: '2025-12-12 07:00:00',
+      status: 'active',
+      notifications: [
+        { id: 'n6', channel: 'email', target: 'supply_mgr@example.com', status: 'pending' },
+        { id: 'n7', channel: 'dingtalk', target: '钉钉机器人B', status: 'pending' }
+      ]
+    },
+    {
+      id: '4',
+      taskId: '2',
+      taskName: '供应商协议价监控',
+      severity: 'high',
+      ruleSummary: '协议价跌幅 < -20%',
+      hitCount: 9,
+      dimensionValues: ['供应商: B集团'],
+      timestamp: '2025-12-12 06:00:00',
+      status: 'active',
+      notifications: [
+        { id: 'n8', channel: 'email', target: 'supply_mgr@example.com', status: 'failed', detail: '收件人地址不存在' },
+        { id: 'n9', channel: 'email', target: 'data_ops@example.com', status: 'failed', detail: 'SMTP 鉴权失败' }
+      ]
+    },
+    {
+      id: '5',
+      taskId: '2',
+      taskName: '供应商协议价监控',
+      severity: 'low',
+      ruleSummary: '监控初始化',
+      hitCount: 0,
+      dimensionValues: ['供应商: C集团'],
+      timestamp: '2025-12-11 10:00:00',
+      status: 'active',
+      notifications: []
     }
   ];
 
@@ -798,227 +870,97 @@ const MonitoringManagement: React.FC = () => {
               </Col>
             </Row>
 
-            <Row gutter={16}>
-              <Col span={8}>
-                <Form.Item
-                  name="notifyWhenNoAlert"
-                  label="无异常是否通知"
-                  initialValue="no"
-                >
-                  <Select>
-                    <Option value="no">仅异常时通知</Option>
-                    <Option value="yes">异常和无异常均通知</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-            </Row>
-
           </Card>
 
           {/* 4. 通知设置 */}
           <Card title="通知设置" style={{ marginBottom: 16 }}>
-            <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-              当监控规则被触发时，将按以下设置发送通知。未填写的渠道将不会发送。
+            <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+              当监控规则被触发时，将按以下设置发送通知
             </Text>
 
-            <Tabs
-              defaultActiveKey="alert"
-              style={{ marginBottom: 16 }}
-              items={[
-                {
-                  key: 'alert',
-                  label: '异常通知模板',
-                  children: (
-                    <>
-                      <Row gutter={16} style={{ marginBottom: 8 }}>
-                        <Col span={8}>
-                          <Form.Item
-                            name="alertNotificationTitle"
-                            label="消息标题"
-                            initialValue="【监控预警】{taskName} 发现异常"
-                            rules={[{ required: true, message: '请输入消息标题' }]}
-                          >
-                            <Input
-                              placeholder="点击下方变量标签插入"
-                              onFocus={() => setActiveInputField('alertTitle')}
-                            />
-                          </Form.Item>
-                        </Col>
-                        <Col span={16}>
-                          <Form.Item
-                            name="alertNotificationDescription"
-                            label="消息内容"
-                            initialValue="任务【{taskName}】在{time}触发预警（等级：{severity}），命中记录数：{hitCount}。"
-                          >
-                            <TextArea
-                              rows={3}
-                              placeholder="点击下方变量标签插入"
-                              onFocus={() => setActiveInputField('alertContent')}
-                            />
-                          </Form.Item>
-                        </Col>
-                      </Row>
-                      <div style={{ marginBottom: 8 }}>
-                        <Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>点击插入变量：</Text>
-                        {templateVariables.map(v => (
-                          <Tag
-                            key={v.key}
-                            color="blue"
-                            style={{ cursor: 'pointer', marginBottom: 4 }}
-                            onClick={() => insertVariable(v.key)}
-                          >
-                            {`{${v.key}}`} {v.label}
-                          </Tag>
-                        ))}
-                      </div>
-                    </>
-                  )
-                },
-                {
-                  key: 'noAlert',
-                  label: '无异常通知模板',
-                  children: (
-                    <>
-                      <Row gutter={16} style={{ marginBottom: 8 }}>
-                        <Col span={8}>
-                          <Form.Item
-                            name="noAlertNotificationTitle"
-                            label="消息标题"
-                            initialValue="【监控结果】{taskName} 检测通过"
-                            rules={[{ required: true, message: '请输入消息标题' }]}
-                          >
-                            <Input
-                              placeholder="点击下方变量标签插入"
-                              onFocus={() => setActiveInputField('noAlertTitle')}
-                            />
-                          </Form.Item>
-                        </Col>
-                        <Col span={16}>
-                          <Form.Item
-                            name="noAlertNotificationDescription"
-                            label="消息内容"
-                            initialValue="任务【{taskName}】在{time}完成检测，未发现异常。"
-                          >
-                            <TextArea
-                              rows={3}
-                              placeholder="点击下方变量标签插入"
-                              onFocus={() => setActiveInputField('noAlertContent')}
-                            />
-                          </Form.Item>
-                        </Col>
-                      </Row>
-                      <div style={{ marginBottom: 8 }}>
-                        <Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>点击插入变量：</Text>
-                        {templateVariables.map(v => (
-                          <Tag
-                            key={v.key}
-                            color="blue"
-                            style={{ cursor: 'pointer', marginBottom: 4 }}
-                            onClick={() => insertVariable(v.key)}
-                          >
-                            {`{${v.key}}`} {v.label}
-                          </Tag>
-                        ))}
-                      </div>
-                    </>
-                  )
-                }
-              ]}
-            />
+            <Space direction="vertical" size={16} style={{ width: '100%' }}>
+              {/* 推送渠道与接收人 */}
+              <Card size="small" title="接收人 & 通知方式">
+                <Form.Item
+                  name="notificationReceivers"
+                  label="接收人"
+                  rules={[{ required: true, message: '请选择至少一个接收人' }]}
+                  style={{ marginBottom: 16 }}
+                >
+                  <Select
+                    mode="multiple"
+                    placeholder="请选择接收人"
+                    style={{ width: '100%' }}
+                    options={[
+                      { label: '张三 (zhangsan@example.com)', value: 'user_zhangsan' },
+                      { label: '李四 (lisi@example.com)', value: 'user_lisi' },
+                      { label: '王五 (wangwu@example.com)', value: 'user_wangwu' },
+                      { label: '赵六 (zhaoliu@example.com)', value: 'user_zhaoliu' },
+                      { label: '采购组', value: 'group_purchase' },
+                      { label: '风控组', value: 'group_risk' }
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="notificationChannels"
+                  label="通知方式"
+                  rules={[{ required: true, message: '请选择至少一种通知方式' }]}
+                  style={{ marginBottom: 0 }}
+                >
+                  <Checkbox.Group
+                    options={[
+                      { label: '邮件', value: 'email' },
+                      { label: '短信', value: 'sms' },
+                      { label: '钉钉', value: 'dingtalk' },
+                      { label: '企业微信', value: 'wechat' }
+                    ]}
+                  />
+                </Form.Item>
+              </Card>
 
-            <Form.List name="notificationChannels">
-              {(fields, { add, remove }) => (
-                <Row gutter={[12, 12]}>
-                  {fields.map((field) => {
-                    const itemKey = (field.key ?? field.name) as React.Key;
-                    return (
-                      <Col span={8} key={itemKey}>
-                        <Card
-                          size="small"
-                          title="通知渠道"
-                          extra={
-                            <Space size={8}>
-                              <Button
-                                size="small"
-                                onClick={() =>
-                                  handleTestNotification(
-                                    form.getFieldValue(['notificationChannels', field.name, 'channelType'])
-                                  )
-                                }
-                              >
-                                测试发送
-                              </Button>
-                              <Button danger type="link" size="small" onClick={() => remove(field.name)}>
-                                删除
-                              </Button>
-                            </Space>
-                          }
-                        >
-                          <Form.Item
-                            name={[field.name, 'channelType']}
-                            label="渠道类型"
-                            rules={[{ required: true, message: '请选择渠道类型' }]}
-                          >
-                            <Select placeholder="选择渠道">
-                              <Option value="email">邮件</Option>
-                              <Option value="dingtalk">钉钉机器人</Option>
-                              <Option value="wecom">企业微信机器人</Option>
-                            </Select>
-                          </Form.Item>
-
-                          <Form.Item noStyle shouldUpdate>
-                            {({ getFieldValue }) => {
-                              const channelType = getFieldValue(['notificationChannels', field.name, 'channelType']);
-                              if (channelType === 'email') {
-                                return (
-                                  <div
-                                    onPaste={(e: React.ClipboardEvent<HTMLInputElement>) =>
-                                      handleEmailPaste(e, field.name)
-                                    }
-                                  >
-                                    <Form.Item
-                                      name={[field.name, 'emails']}
-                                      label="收件人邮箱"
-                                      rules={[{ required: true, message: '请输入收件人邮箱' }]}
-                                    >
-                                      <Select
-                                        mode="tags"
-                                        tokenSeparators={[',', ';', ' ', '、']}
-                                        placeholder="输入邮箱后回车；支持粘贴批量拆分"
-                                      />
-                                    </Form.Item>
-                                  </div>
-                                );
-                              }
-                              return (
-                                <Form.Item
-                                  name={[field.name, 'webhook']}
-                                  label="Webhook 地址"
-                                  rules={[{ required: true, message: '请输入 Webhook 地址' }]}
-                                >
-                                  <Input placeholder={channelType === 'wecom' ? '企业微信机器人 Webhook' : '钉钉机器人 Webhook'} />
-                                </Form.Item>
-                              );
-                            }}
-                          </Form.Item>
-                        </Card>
-                      </Col>
-                    );
-                  })}
-
-                  <Col span={8}>
-                    <Button
-                      type="dashed"
-                      block
-                      icon={<PlusOutlined />}
-                      onClick={() => add({ channelType: 'email' })}
+              {/* 消息模板 */}
+              <Card size="small" title="消息模板">
+                <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                  <Form.Item
+                    name="alertNotificationTitle"
+                    label="消息标题"
+                    initialValue="【监控预警】{taskName} 发现异常"
+                    rules={[{ required: true, message: '请输入消息标题' }]}
+                    style={{ marginBottom: 0 }}
+                  >
+                    <Input
+                      placeholder="点击下方变量标签插入"
+                      onFocus={() => setActiveInputField('alertTitle')}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="alertNotificationDescription"
+                    label="消息内容"
+                    initialValue="任务【{taskName}】在{time}触发预警（等级：{severity}），命中记录数：{hitCount}。"
+                    style={{ marginBottom: 0 }}
+                  >
+                    <TextArea
+                      rows={4}
+                      placeholder="点击下方变量标签插入"
+                      onFocus={() => setActiveInputField('alertContent')}
+                    />
+                  </Form.Item>
+                </Space>
+                <div style={{ marginTop: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>点击插入变量：</Text>
+                  {templateVariables.map(v => (
+                    <Tag
+                      key={v.key}
+                      color="blue"
+                      style={{ cursor: 'pointer', marginBottom: 4 }}
+                      onClick={() => insertVariable(v.key)}
                     >
-                      新增通知渠道
-                    </Button>
-                  </Col>
-                </Row>
-              )}
-            </Form.List>
+                      {`{${v.key}}`} {v.label}
+                    </Tag>
+                  ))}
+                </div>
+              </Card>
+            </Space>
           </Card>
         </Form>
       </div>
@@ -1171,7 +1113,22 @@ const MonitoringManagement: React.FC = () => {
       )
     },
     {
-      title: '数据源',
+      title: '预警等级',
+      dataIndex: 'severity',
+      key: 'severity',
+      render: (severity: MonitorTask['severity']) => {
+        const config: Record<MonitorTask['severity'], { color: string; text: string }> = {
+          low: { color: 'default', text: '提示' },
+          medium: { color: 'orange', text: '重要' },
+          high: { color: 'red', text: '严重' },
+          critical: { color: 'magenta', text: '紧急' }
+        };
+        const { color, text } = config[severity] || config.low;
+        return <Tag color={color}>{text}</Tag>;
+      }
+    },
+    {
+      title: '比价方案',
       dataIndex: 'schemeName',
       key: 'schemeName'
     },
@@ -1190,15 +1147,27 @@ const MonitoringManagement: React.FC = () => {
       )
     },
     {
-      title: '预警数',
-      dataIndex: 'alertCount',
-      key: 'alertCount',
+      title: '规则概要',
+      dataIndex: 'ruleSummary',
+      key: 'ruleSummary',
+      render: (text: string) => <Text type="secondary">{text}</Text>
+    },
+    {
+      title: '执行频率',
+      dataIndex: 'scheduleSummary',
+      key: 'scheduleSummary',
+      render: (text: string) => <Text>{text}</Text>
+    },
+    {
+      title: '近一月预警数',
+      dataIndex: 'monthlyAlertCount',
+      key: 'monthlyAlertCount',
       render: (count: number) => (
         <Badge count={count} showZero color={count > 0 ? 'red' : 'gray'} />
       )
     },
     {
-      title: '最后检查',
+      title: '最近执行时间',
       dataIndex: 'lastCheck',
       key: 'lastCheck'
     },
@@ -1207,6 +1176,9 @@ const MonitoringManagement: React.FC = () => {
       key: 'actions',
       render: (record: MonitorTask) => (
         <Space>
+          <Button type="link" size="small" onClick={() => handleViewResult(record)}>
+            查看监控结果
+          </Button>
           <Tooltip title="查看详情">
             <Button type="text" icon={<EyeOutlined />} />
           </Tooltip>
@@ -1249,18 +1221,16 @@ const MonitoringManagement: React.FC = () => {
       key: 'taskName'
     },
     {
-      title: '预警信息',
-      dataIndex: 'message',
-      key: 'message'
+      title: '规则概要',
+      dataIndex: 'ruleSummary',
+      key: 'ruleSummary',
+      render: (text: string) => <Text type="secondary">{text}</Text>
     },
     {
-      title: '数值/阈值',
-      key: 'values',
-      render: (record: AlertRecord) => (
-        <Text>
-          {record.value}% / {record.threshold}%
-        </Text>
-      )
+      title: '命中记录数',
+      dataIndex: 'hitCount',
+      key: 'hitCount',
+      render: (count: number) => <Text>{count}</Text>
     },
     {
       title: '时间',
@@ -1268,20 +1238,92 @@ const MonitoringManagement: React.FC = () => {
       key: 'timestamp'
     },
     {
+      title: '通知结果',
+      key: 'notifications',
+      render: (record: AlertRecord) => {
+        if (!record.notifications || record.notifications.length === 0) {
+          return <Text type="secondary">未配置通知</Text>;
+        }
+        const hasFailed = record.notifications.some(n => n.status === 'failed');
+        const hasPending = record.notifications.some(n => n.status === 'pending');
+        const allSuccess = record.notifications.every(n => n.status === 'success');
+
+        let color: string = 'default';
+        let text: string = '未知';
+
+        if (hasFailed) {
+          const allFailed = record.notifications.every(n => n.status === 'failed');
+          color = 'red';
+          text = allFailed ? '全部失败' : '部分失败';
+        } else if (hasPending) {
+          color = 'orange';
+          text = '待发送';
+        } else if (allSuccess) {
+          color = 'green';
+          text = '全部成功';
+        }
+
+        return <Tag color={color}>{text}</Tag>;
+      }
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      render: (record: AlertRecord) => (
+        <Space>
+          <Button type="link" size="small" onClick={() => handleViewAlertDetail(record)}>
+            查看详情
+          </Button>
+          <Button type="link" size="small" onClick={() => handleViewNotificationDetail(record)}>
+            查看推送结果
+          </Button>
+        </Space>
+      )
+    }
+  ];
+
+  const notificationColumns = [
+    {
+      title: '渠道',
+      dataIndex: 'channel',
+      key: 'channel',
+      render: (channel: AlertNotificationResult['channel']) => {
+        const channelLabels: Record<AlertNotificationResult['channel'], string> = {
+          email: '邮件',
+          dingtalk: '钉钉',
+          wechat: '企业微信'
+        };
+        return channelLabels[channel];
+      }
+    },
+    {
+      title: '目标',
+      dataIndex: 'target',
+      key: 'target'
+    },
+    {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => {
-        const config = {
-          active: { color: 'red', text: '活跃' },
-          acknowledged: { color: 'orange', text: '已确认' },
-          resolved: { color: 'green', text: '已解决' }
+      render: (status: AlertNotificationResult['status']) => {
+        const statusConfig: Record<AlertNotificationResult['status'], { color: string; text: string }> = {
+          success: { color: 'green', text: '成功' },
+          failed: { color: 'red', text: '失败' },
+          pending: { color: 'orange', text: '待发送' }
         };
-        const { color, text } = config[status as keyof typeof config];
-        return <Badge status={color as any} text={text} />;
+        const { color, text } = statusConfig[status];
+        return <Tag color={color}>{text}</Tag>;
       }
+    },
+    {
+      title: '说明',
+      dataIndex: 'detail',
+      key: 'detail',
+      render: (detail?: string) => (detail ? <Text type="secondary">{detail}</Text> : <Text type="secondary">-</Text>)
     }
   ];
+
+  const monthlyAlertCount = alertRecords.length;
 
   if (viewMode === 'create') {
     return renderCreatePage();
@@ -1319,7 +1361,7 @@ const MonitoringManagement: React.FC = () => {
 
       {/* 统计概览 */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={6}>
+        <Col span={8}>
           <Card>
             <Statistic
               title="监控任务总数"
@@ -1329,7 +1371,7 @@ const MonitoringManagement: React.FC = () => {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={8}>
           <Card>
             <Statistic
               title="运行中任务"
@@ -1339,23 +1381,13 @@ const MonitoringManagement: React.FC = () => {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={8}>
           <Card>
             <Statistic
-              title="今日预警数"
-              value={alertRecords.length}
+              title="近一月预警数"
+              value={monthlyAlertCount}
               prefix={<WarningOutlined className="h-4 w-4" />}
               valueStyle={{ color: '#fa8c16' }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="待处理预警"
-              value={alertRecords.filter(a => a.status === 'active').length}
-              prefix={<BellOutlined className="h-4 w-4" />}
-              valueStyle={{ color: '#f5222d' }}
             />
           </Card>
         </Col>
@@ -1369,7 +1401,6 @@ const MonitoringManagement: React.FC = () => {
               <Space>
                 <Target className="h-4 w-4" />
                 监控任务
-                <Badge count={monitorTasks.length} showZero />
               </Space>
             }
             key="tasks"
@@ -1387,36 +1418,101 @@ const MonitoringManagement: React.FC = () => {
               <Space>
                 <AlertIcon className="h-4 w-4" />
                 预警记录
-                <Badge count={alertRecords.filter(a => a.status === 'active').length} showZero />
               </Space>
             }
             key="alerts"
           >
             <Table
               columns={alertColumns}
-              dataSource={alertRecords}
+              dataSource={alertRecords.filter(a => a.status === 'active')}
               rowKey="id"
               pagination={{ pageSize: 10 }}
             />
           </Tabs.TabPane>
-
-          <Tabs.TabPane
-            tab={
-              <Space>
-                <BarChart3 className="h-4 w-4" />
-                监控分析
-              </Space>
-            }
-            key="analysis"
-          >
-            <div style={{ padding: 40, textAlign: 'center' }}>
-              <AlertIcon className="h-16 w-16" style={{ color: '#d9d9d9', marginBottom: 16 }} />
-              <Title level={4} type="secondary">监控分析</Title>
-              <Text type="secondary">监控趋势分析、预警效果统计等功能开发中...</Text>
-            </div>
-          </Tabs.TabPane>
         </Tabs>
       </Card>
+
+      <Modal
+        open={alertDetailVisible}
+        title="预警详情"
+        footer={null}
+        onCancel={() => setAlertDetailVisible(false)}
+      >
+        {alertDetail && (
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <div>
+              <Text type="secondary">监控任务：</Text>
+              <Text strong>{alertDetail.taskName}</Text>
+            </div>
+            <div>
+              <Text type="secondary">规则概要：</Text>
+              <Text>{alertDetail.ruleSummary}</Text>
+            </div>
+            <div>
+              <Text type="secondary">命中信息：</Text>
+            </div>
+            <Space wrap>
+              {alertDetail.dimensionValues.map(value => (
+                <Tag key={`${alertDetail.id}-detail-${value}`} color="blue">
+                  {value}
+                </Tag>
+              ))}
+              {alertDetail.dimensionValues.length === 0 && <Text type="secondary">-</Text>}
+            </Space>
+            <div>
+              <Text type="secondary">命中记录数：</Text>
+              <Text>{alertDetail.hitCount}</Text>
+            </div>
+            <div>
+              <Text type="secondary">严重程度：</Text>
+              <Text>{alertDetail.severity}</Text>
+            </div>
+            <div>
+              <Text type="secondary">时间：</Text>
+              <Text>{alertDetail.timestamp}</Text>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <Button
+                type="primary"
+                block
+                onClick={() => {
+                  message.info('异常数据报表快照功能即将上线，当前为占位入口');
+                }}
+              >
+                查看异常数据报表快照
+              </Button>
+            </div>
+          </Space>
+        )}
+      </Modal>
+
+      <Modal
+        open={notificationDetailVisible}
+        title="通知推送结果"
+        footer={null}
+        onCancel={() => setNotificationDetailVisible(false)}
+        width={640}
+      >
+        {notificationDetailRecord && (
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <div>
+              <Text type="secondary">监控任务：</Text>
+              <Text strong>{notificationDetailRecord.taskName}</Text>
+            </div>
+            <div>
+              <Text type="secondary">规则概要：</Text>
+              <Text>{notificationDetailRecord.ruleSummary}</Text>
+            </div>
+            <Table
+              columns={notificationColumns}
+              dataSource={notificationDetailRecord.notifications}
+              rowKey="id"
+              pagination={false}
+              size="small"
+            />
+          </Space>
+        )}
+      </Modal>
     </div>
   );
 };
