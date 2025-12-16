@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Card,
   Button,
@@ -16,29 +16,31 @@ import {
   Statistic,
   Badge,
   Tabs,
-  TimePicker,
+  Radio,
   Tree,
-  InputNumber,
   Switch,
   Modal,
   Checkbox
 } from 'antd';
 import {
-  PlusOutlined,
   EyeOutlined,
   DeleteOutlined,
   WarningOutlined,
   CheckCircleOutlined,
   PlayCircleOutlined,
   PauseCircleOutlined,
-  ExclamationCircleOutlined
+  ExclamationCircleOutlined,
+  SendOutlined
 } from '@ant-design/icons';
 import {
-  BarChart3,
   Target,
-  Activity,
-  AlertTriangle as AlertIcon
+  Activity
 } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { SheetComponent } from '@antv/s2-react';
+import '@antv/s2-react/dist/s2-react.min.css';
+import { Cron } from 'react-js-cron';
+import 'react-js-cron/dist/styles.css';
 import QueryConditionsPanel, { QueryCondition, FieldMetadata } from '../components/QueryConditionsPanel';
 
 const { Option } = Select;
@@ -60,6 +62,7 @@ interface MonitorTask {
   severity: 'low' | 'medium' | 'high' | 'critical';
   ruleSummary: string;
   scheduleSummary: string;
+  creator: string;
 }
 
 interface AlertNotificationResult {
@@ -74,6 +77,7 @@ interface AlertRecord {
   id: string;
   taskId: string;
   taskName: string;
+  taskCreator: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
   ruleSummary: string;
   hitCount: number;
@@ -100,7 +104,10 @@ interface LayoutDroppedItem {
 }
 
 const MonitoringManagement: React.FC = () => {
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState('tasks');
+  const [listView, setListView] = useState<'tasks' | 'alerts'>('tasks');
+  const [adminListView, setAdminListView] = useState<'tasks' | 'alerts'>('tasks');
   const [viewMode, setViewMode] = useState<'list' | 'create' | 'preview'>('list');
   const [monitorConditions, setMonitorConditions] = useState<QueryCondition[]>([]);
   const [droppedItems, setDroppedItems] = useState<LayoutDroppedItem[]>([]);
@@ -112,6 +119,29 @@ const MonitoringManagement: React.FC = () => {
   const [alertDetailVisible, setAlertDetailVisible] = useState(false);
   const [notificationDetailRecord, setNotificationDetailRecord] = useState<AlertRecord | null>(null);
   const [notificationDetailVisible, setNotificationDetailVisible] = useState(false);
+  const [cronValue, setCronValue] = useState('0 10 * * *');
+
+  const reportContext = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const reportId = params.get('reportId') || '';
+    const reportName = params.get('reportName') ? decodeURIComponent(params.get('reportName') as string) : '';
+    const schemeId = params.get('schemeId') || '';
+    return { reportId, reportName, schemeId };
+  }, [location.search]);
+
+  const currentUser = '张三';
+
+  useEffect(() => {
+    if (reportContext.reportId) {
+      setViewMode('create');
+      form.setFieldsValue({
+        taskName: `【${reportContext.reportName || '报表'}】监控任务`,
+        sourceReportId: reportContext.reportId,
+        sourceReportName: reportContext.reportName || reportContext.reportId,
+        schemeId: reportContext.schemeId || undefined
+      });
+    }
+  }, [form, reportContext.reportId, reportContext.reportName, reportContext.schemeId]);
 
   // 可用模板变量
   const templateVariables = [
@@ -162,7 +192,21 @@ const MonitoringManagement: React.FC = () => {
     setNotificationDetailVisible(true);
   };
 
-  const monitorTasks: MonitorTask[] = [
+  const handleTestNotification = async () => {
+    try {
+      await form.validateFields([
+        'notificationReceivers',
+        'notificationChannels',
+        'alertNotificationTitle',
+        'alertNotificationDescription'
+      ]);
+      message.success('测试通知已发送（示例，无实际推送）');
+    } catch {
+      message.error('请先完善通知设置');
+    }
+  };
+
+  const allMonitorTasks: MonitorTask[] = [
     {
       id: '1',
       name: 'CPU价格异常监控',
@@ -176,8 +220,9 @@ const MonitoringManagement: React.FC = () => {
       lastCheck: '2025-12-12 08:50:00',
       monthlyAlertCount: 12,
       severity: 'high',
-      ruleSummary: '满足所有条件 · 2 个指标条件',
-      scheduleSummary: '每天 10:00 执行'
+      ruleSummary: '2 个指标条件',
+      scheduleSummary: '每天 10:00 执行',
+      creator: '张三'
     },
     {
       id: '2',
@@ -192,16 +237,37 @@ const MonitoringManagement: React.FC = () => {
       lastCheck: '2025-12-12 07:05:00',
       monthlyAlertCount: 4,
       severity: 'medium',
-      ruleSummary: '满足任一条件 · 1 个指标条件',
-      scheduleSummary: '每周一/三 09:30 执行'
+      ruleSummary: '1 个指标条件',
+      scheduleSummary: '每周一/三 09:30 执行',
+      creator: '张三'
+    },
+    {
+      id: '3',
+      name: '内存条价格波动监控',
+      description: '监控内存条价格波动，超过8%上涨时预警',
+      schemeId: 'scheme-003',
+      schemeName: '内存条价格趋势分析',
+      dimensions: ['供应商', '物料编码'],
+      metrics: ['含税价', '差异率'],
+      rules: [],
+      enabled: true,
+      lastCheck: '2025-12-12 09:10:00',
+      monthlyAlertCount: 6,
+      severity: 'medium',
+      ruleSummary: '1 个指标条件',
+      scheduleSummary: '每天 09:00 执行',
+      creator: '李四'
     }
   ];
 
-  const alertRecords: AlertRecord[] = [
+  const myMonitorTasks = allMonitorTasks.filter(t => t.creator === currentUser);
+
+  const allAlertRecords: AlertRecord[] = [
     {
       id: '1',
       taskId: '1',
       taskName: 'CPU价格异常监控',
+      taskCreator: '张三',
       severity: 'high',
       ruleSummary: '差异率 > 15%',
       hitCount: 32,
@@ -218,6 +284,7 @@ const MonitoringManagement: React.FC = () => {
       id: '2',
       taskId: '1',
       taskName: 'CPU价格异常监控',
+      taskCreator: '张三',
       severity: 'medium',
       ruleSummary: '差异率 > 10%',
       hitCount: 18,
@@ -233,6 +300,7 @@ const MonitoringManagement: React.FC = () => {
       id: '3',
       taskId: '2',
       taskName: '供应商协议价监控',
+      taskCreator: '张三',
       severity: 'medium',
       ruleSummary: '协议价需人工确认',
       hitCount: 5,
@@ -248,6 +316,7 @@ const MonitoringManagement: React.FC = () => {
       id: '4',
       taskId: '2',
       taskName: '供应商协议价监控',
+      taskCreator: '张三',
       severity: 'high',
       ruleSummary: '协议价跌幅 < -20%',
       hitCount: 9,
@@ -263,6 +332,7 @@ const MonitoringManagement: React.FC = () => {
       id: '5',
       taskId: '2',
       taskName: '供应商协议价监控',
+      taskCreator: '张三',
       severity: 'low',
       ruleSummary: '监控初始化',
       hitCount: 0,
@@ -270,8 +340,25 @@ const MonitoringManagement: React.FC = () => {
       timestamp: '2025-12-11 10:00:00',
       status: 'active',
       notifications: []
+    },
+    {
+      id: '6',
+      taskId: '3',
+      taskName: '内存条价格波动监控',
+      taskCreator: '李四',
+      severity: 'medium',
+      ruleSummary: '差异率 > 8%',
+      hitCount: 11,
+      dimensionValues: ['供应商: Kingston', '物料编码: DDR5-6000'],
+      timestamp: '2025-12-12 09:05:00',
+      status: 'active',
+      notifications: [
+        { id: 'n10', channel: 'email', target: 'data_ops@example.com', status: 'success' }
+      ]
     }
   ];
+
+  const myAlertRecords = allAlertRecords.filter(a => a.taskCreator === currentUser);
 
   // 比价方案选项
   const schemeOptions = [
@@ -529,7 +616,7 @@ const MonitoringManagement: React.FC = () => {
           {/* 1. 基本信息 */}
           <Card title="基本信息" style={{ marginBottom: 16 }}>
             <Row gutter={16}>
-              <Col span={6}>
+              <Col span={8}>
                 <Form.Item
                   name="taskName"
                   label="任务名称"
@@ -538,13 +625,29 @@ const MonitoringManagement: React.FC = () => {
                   <Input placeholder="如：供应价差监控" />
                 </Form.Item>
               </Col>
-              <Col span={6}>
+              <Col span={8}>
+                <Form.Item
+                  name="sourceReportName"
+                  label="来源报表"
+                >
+                  <Input placeholder="请选择来源报表" disabled={!!reportContext.reportId} />
+                </Form.Item>
+                <Form.Item name="sourceReportId" hidden>
+                  <Input />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
                 <Form.Item
                   name="schemeId"
                   label="比价方案"
                   rules={[{ required: true, message: '请选择比价方案' }]}
                 >
-                  <Select placeholder="选择比价方案" showSearch optionFilterProp="children">
+                  <Select
+                    placeholder="选择比价方案"
+                    showSearch
+                    optionFilterProp="children"
+                    disabled={!!reportContext.reportId}
+                  >
                     {schemeOptions.map(option => (
                       <Option key={option.value} value={option.value}>
                         {option.label}
@@ -553,7 +656,9 @@ const MonitoringManagement: React.FC = () => {
                   </Select>
                 </Form.Item>
               </Col>
-              <Col span={6}>
+            </Row>
+            <Row gutter={16}>
+              <Col span={8}>
                 <Form.Item
                   name="severity"
                   label="预警等级"
@@ -567,7 +672,7 @@ const MonitoringManagement: React.FC = () => {
                   </Select>
                 </Form.Item>
               </Col>
-              <Col span={6}>
+              <Col span={8}>
                 <Form.Item
                   name="enabled"
                   label="任务状态"
@@ -577,11 +682,31 @@ const MonitoringManagement: React.FC = () => {
                   <Switch checkedChildren="启用" unCheckedChildren="停用" />
                 </Form.Item>
               </Col>
+              <Col span={8} />
             </Row>
           </Card>
 
           {/* 2. 监控视图 */}
-          <Card title="监控视图" style={{ marginBottom: 16 }} bodyStyle={{ padding: 0 }}>
+          <Card
+            title="监控视图"
+            style={{ marginBottom: 16 }}
+            bodyStyle={{ padding: 0 }}
+            extra={
+              <Button
+                type="primary"
+                icon={<PlayCircleOutlined />}
+                onClick={() => {
+                  form.validateFields(['monitoringFrequency']).then(() => {
+                    setViewMode('preview');
+                  }).catch(() => {
+                    message.error('请先完成执行设置');
+                  });
+                }}
+              >
+                结果预览
+              </Button>
+            }
+          >
             <Row gutter={0} style={{ minHeight: 400 }}>
               {/* 左侧：可用字段 */}
               <Col span={8} style={{ borderRight: '1px solid #f0f0f0', padding: 16 }}>
@@ -615,352 +740,228 @@ const MonitoringManagement: React.FC = () => {
                   {renderConfigRow('列维度', 'column', 'green')}
                   {renderConfigRow('监控指标', 'value', 'orange')}
                 </div>
+
               </Col>
             </Row>
           </Card>
 
-          {/* 3. 监控规则 */}
-          <Card title="监控规则">
-            <Row gutter={16} align="middle" style={{ marginBottom: 8 }}>
-              <Col span={8}>
-                <Form.Item
-                  name={['rule', 'conditionLogic']}
-                  label="触发条件"
-                  initialValue="AND"
-                  rules={[{ required: true, message: '请选择触发条件' }]}
-                >
-                  <Select>
-                    <Option value="AND">满足所有条件时触发</Option>
-                    <Option value="OR">满足任一条件时触发</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col span={16} style={{ textAlign: 'right' }}>
-                <Button
-                  type="primary"
-                  icon={<PlayCircleOutlined />}
-                  onClick={() => {
-                    // 验证表单后跳转到预览页面
-                    form.validateFields(['rule', 'monitoringFrequency']).then(() => {
-                      setViewMode('preview');
-                    }).catch(() => {
-                      message.error('请先完成规则配置');
-                    });
-                  }}
-                >
-                  监控结果预览
-                </Button>
-              </Col>
-            </Row>
-
-            <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-              添加需要监控的指标及其数值区间。根据上方触发条件（满足所有/任一）判断是否触发预警。
-            </Text>
-
-            <Form.List name={['rule', 'conditions']}>
-              {(condFields, { add: addCond, remove: removeCond }) => (
-                <>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start', marginBottom: 12 }}>
-                    {condFields.map(({ key: cKey, name: cName }) => (
-                      <div
-                        key={cKey}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          padding: '6px 8px',
-                          border: '1px solid #d9d9d9',
-                          borderRadius: 4,
-                          background: '#fafafa'
-                        }}
-                      >
-                        <Form.Item
-                          {...{ name: [cName, 'metricId'] }}
-                          style={{ marginBottom: 0, minWidth: 120 }}
-                          rules={[{ required: true, message: '请选择指标' }]}
-                        >
-                          <Select
-                            placeholder="选择指标"
-                            size="small"
-                            style={{ width: 120 }}
-                          >
-                            {metricFields.map(m => (
-                              <Option key={m.id} value={m.id}>
-                                {m.name}
-                              </Option>
-                            ))}
-                          </Select>
-                        </Form.Item>
-
-                        <span style={{ color: '#9ca3af', fontSize: 12 }}>:</span>
-
-                        <Form.Item
-                          {...{ name: [cName, 'min'] }}
-                          style={{ marginBottom: 0, width: 60 }}
-                        >
-                          <InputNumber
-                            placeholder="最小"
-                            size="small"
-                            style={{ width: 60 }}
-                          />
-                        </Form.Item>
-
-                        <span style={{ color: '#9ca3af', fontSize: 12 }}>~</span>
-
-                        <Form.Item
-                          {...{ name: [cName, 'max'] }}
-                          style={{ marginBottom: 0, width: 60 }}
-                        >
-                          <InputNumber
-                            placeholder="最大"
-                            size="small"
-                            style={{ width: 60 }}
-                          />
-                        </Form.Item>
-
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<DeleteOutlined />}
-                          onClick={() => removeCond(cName)}
-                          style={{ padding: '0 4px' }}
-                        />
-                      </div>
-                    ))}
-                    <Button
-                      type="primary"
-                      size="small"
-                      icon={<PlusOutlined />}
-                      onClick={() => addCond()}
-                    >
-                      添加指标条件
-                    </Button>
-                  </div>
-                </>
-              )}
-            </Form.List>
-
-            <Row gutter={16} style={{ marginTop: 16, marginBottom: 16 }}>
-              <Col span={8}>
-                <Form.Item
-                  name="monitoringFrequency"
-                  label="执行频率"
-                  initialValue="daily"
-                  rules={[{ required: true, message: '请选择执行频率' }]}
-                >
-                  <Select placeholder="选择执行频率">
-                    <Option value="hourly">每小时</Option>
-                    <Option value="daily">每天</Option>
-                    <Option value="weekly">每周</Option>
-                    <Option value="monthly">每月</Option>
-                    <Option value="yearly">每年</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item
-                  shouldUpdate={(prev, curr) => prev.monitoringFrequency !== curr.monitoringFrequency}
-                  noStyle
-                >
-                  {({ getFieldValue }) => {
-                    const frequency = getFieldValue('monitoringFrequency');
-                    if (frequency === 'hourly') {
-                      return (
-                        <Form.Item
-                          name="hourInterval"
-                          label="间隔小时数"
-                          rules={[{ required: true, message: '请输入间隔小时数' }]}
-                        >
-                          <InputNumber placeholder="例如：1" min={1} max={24} style={{ width: '100%' }} />
-                        </Form.Item>
-                      );
-                    }
-                    if (frequency === 'daily') {
-                      return (
-                        <Form.Item
-                          name="executeTime"
-                          label="执行时间"
-                          rules={[{ required: true, message: '请选择执行时间' }]}
-                        >
-                          <TimePicker style={{ width: '100%' }} format="HH:mm" />
-                        </Form.Item>
-                      );
-                    }
-                    if (frequency === 'weekly') {
-                      return (
-                        <Form.Item
-                          name="weekDays"
-                          label="执行星期"
-                          rules={[{ required: true, message: '请选择执行星期' }]}
-                        >
-                          <Select mode="multiple" placeholder="选择星期几" style={{ width: '100%' }}>
-                            <Option value="monday">周一</Option>
-                            <Option value="tuesday">周二</Option>
-                            <Option value="wednesday">周三</Option>
-                            <Option value="thursday">周四</Option>
-                            <Option value="friday">周五</Option>
-                            <Option value="saturday">周六</Option>
-                            <Option value="sunday">周日</Option>
-                          </Select>
-                        </Form.Item>
-                      );
-                    }
-                    if (frequency === 'monthly') {
-                      return (
-                        <Form.Item
-                          name="monthDays"
-                          label="执行日期"
-                          rules={[{ required: true, message: '请选择执行日期' }]}
-                        >
-                          <Select mode="multiple" placeholder="选择几号" style={{ width: '100%' }}>
-                            {Array.from({ length: 31 }, (_, i) => (
-                              <Option key={i + 1} value={i + 1}>{i + 1}日</Option>
-                            ))}
-                          </Select>
-                        </Form.Item>
-                      );
-                    }
-                    if (frequency === 'yearly') {
-                      return (
-                        <Form.Item
-                          name="yearDate"
-                          label="执行日期"
-                          rules={[{ required: true, message: '请选择执行日期' }]}
-                        >
-                          <Input placeholder="例如：01-15" style={{ width: '100%' }} />
-                        </Form.Item>
-                      );
-                    }
-                    return null;
-                  }}
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item
-                  shouldUpdate={(prev, curr) => prev.monitoringFrequency !== curr.monitoringFrequency}
-                  noStyle
-                >
-                  {({ getFieldValue }) => {
-                    const frequency = getFieldValue('monitoringFrequency');
-                    if (frequency === 'hourly') {
-                      return (
-                        <Form.Item
-                          name="executeMinute"
-                          label="执行分钟"
-                          rules={[{ required: true, message: '请输入执行分钟' }]}
-                        >
-                          <InputNumber placeholder="0-59" min={0} max={59} style={{ width: '100%' }} />
-                        </Form.Item>
-                      );
-                    }
-                    if (frequency === 'weekly' || frequency === 'monthly' || frequency === 'yearly') {
-                      return (
-                        <Form.Item
-                          name="executeTime"
-                          label="执行时间"
-                          rules={[{ required: true, message: '请选择执行时间' }]}
-                        >
-                          <TimePicker style={{ width: '100%' }} format="HH:mm" />
-                        </Form.Item>
-                      );
-                    }
-                    return null;
-                  }}
-                </Form.Item>
-              </Col>
-            </Row>
-
+          {/* 3. 调度设置 */}
+          <Card title="调度设置" style={{ marginBottom: 16 }}>
+            <Form.Item
+              name="cronExpression"
+              label="定时规则"
+              initialValue="0 10 * * *"
+              rules={[{ required: true, message: '请配置定时规则' }]}
+            >
+              <Input
+                placeholder="Cron 表达式"
+                value={cronValue}
+                readOnly
+                style={{ marginBottom: 16 }}
+              />
+            </Form.Item>
+            <div style={{
+              border: '1px solid #d9d9d9',
+              borderRadius: 4,
+              padding: 16,
+              background: '#fafafa'
+            }}>
+              <Cron
+                value={cronValue}
+                setValue={(newValue: string) => {
+                  setCronValue(newValue);
+                  form.setFieldValue('cronExpression', newValue);
+                }}
+                locale={{
+                  everyText: '每',
+                  emptyMonths: '每月',
+                  emptyMonthDays: '每天',
+                  emptyMonthDaysShort: '日',
+                  emptyWeekDays: '每周',
+                  emptyWeekDaysShort: '周',
+                  emptyHours: '每小时',
+                  emptyMinutes: '每分钟',
+                  emptyMinutesForHourPeriod: '每',
+                  yearOption: '年',
+                  monthOption: '月',
+                  weekOption: '周',
+                  dayOption: '日',
+                  hourOption: '时',
+                  minuteOption: '分',
+                  rebootOption: '重启时',
+                  prefixPeriod: '每',
+                  prefixMonths: '在',
+                  prefixMonthDays: '在',
+                  prefixWeekDays: '在',
+                  prefixWeekDaysForMonthAndYearPeriod: '并且',
+                  prefixHours: '在',
+                  prefixMinutes: '在',
+                  prefixMinutesForHourPeriod: '在',
+                  suffixMinutesForHourPeriod: '分',
+                  errorInvalidCron: 'Cron 表达式无效',
+                  clearButtonText: '清空',
+                  weekDays: [
+                    '周日',
+                    '周一',
+                    '周二',
+                    '周三',
+                    '周四',
+                    '周五',
+                    '周六'
+                  ],
+                  months: [
+                    '一月',
+                    '二月',
+                    '三月',
+                    '四月',
+                    '五月',
+                    '六月',
+                    '七月',
+                    '八月',
+                    '九月',
+                    '十月',
+                    '十一月',
+                    '十二月'
+                  ],
+                  altWeekDays: [
+                    '周日',
+                    '周一',
+                    '周二',
+                    '周三',
+                    '周四',
+                    '周五',
+                    '周六'
+                  ],
+                  altMonths: [
+                    '一月',
+                    '二月',
+                    '三月',
+                    '四月',
+                    '五月',
+                    '六月',
+                    '七月',
+                    '八月',
+                    '九月',
+                    '十月',
+                    '十一月',
+                    '十二月'
+                  ]
+                }}
+                allowedDropdowns={['period', 'months', 'month-days', 'week-days', 'hours', 'minutes']}
+                allowedPeriods={['year', 'month', 'week', 'day', 'hour', 'minute']}
+              />
+            </div>
           </Card>
 
-          {/* 4. 通知设置 */}
-          <Card title="通知设置" style={{ marginBottom: 16 }}>
-            <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-              当监控规则被触发时，将按以下设置发送通知
-            </Text>
-
-            <Space direction="vertical" size={16} style={{ width: '100%' }}>
-              {/* 推送渠道与接收人 */}
-              <Card size="small" title="接收人 & 通知方式">
+          {/* 通知设置 */}
+          <Card
+            title="通知设置"
+            style={{ marginBottom: 16 }}
+            extra={
+              <Button type="default" icon={<SendOutlined />} onClick={handleTestNotification}>
+                测试发送
+              </Button>
+            }
+          >
+            <Form.Item
+              name="notificationReceivers"
+              label="接收人"
+              rules={[{ required: true, message: '请选择至少一个接收人' }]}
+            >
+              <Select
+                mode="multiple"
+                placeholder="请选择接收人"
+                style={{ width: '100%' }}
+                options={[
+                  { label: '张三 (zhangsan@example.com)', value: 'user_zhangsan' },
+                  { label: '李四 (lisi@example.com)', value: 'user_lisi' },
+                  { label: '王五 (wangwu@example.com)', value: 'user_wangwu' },
+                  { label: '赵六 (zhaoliu@example.com)', value: 'user_zhaoliu' },
+                  { label: '采购组', value: 'group_purchase' },
+                  { label: '风控组', value: 'group_risk' }
+                ]}
+              />
+            </Form.Item>
+            <Form.Item
+              name="notificationChannels"
+              label="通知方式"
+              rules={[{ required: true, message: '请选择至少一种通知方式' }]}
+            >
+              <Checkbox.Group
+                options={[
+                  { label: '邮件', value: 'email' },
+                  { label: '短信', value: 'sms' },
+                  { label: '钉钉', value: 'dingtalk' },
+                  { label: '企业微信', value: 'wechat' }
+                ]}
+              />
+            </Form.Item>
+            <Form.Item
+              name="alertNotificationTitle"
+              label="消息标题"
+              initialValue="【监控预警】{taskName} 发现异常"
+              rules={[{ required: true, message: '请输入消息标题' }]}
+            >
+              <Input
+                placeholder="点击下方变量标签插入"
+                onFocus={() => setActiveInputField('alertTitle')}
+              />
+            </Form.Item>
+            <Form.Item
+              name="alertNotificationDescription"
+              label="消息内容"
+              initialValue="任务 {taskName} 触发 {severity} 预警，命中 {hitCount} 条记录。"
+              rules={[{ required: true, message: '请输入消息内容' }]}
+            >
+              <TextArea
+                rows={4}
+                placeholder="点击下方变量标签插入"
+                onFocus={() => setActiveInputField('alertContent')}
+              />
+            </Form.Item>
+            <div style={{ marginBottom: 16 }}>
+              <Space wrap>
+                {templateVariables.map(variable => (
+                  <Tag
+                    key={variable.key}
+                    color="blue"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => insertVariable(variable.key)}
+                  >
+                    {variable.label}
+                  </Tag>
+                ))}
+              </Space>
+              <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>点击标签可插入模板变量</Text>
+            </div>
+            <Row gutter={16}>
+              <Col span={12}>
                 <Form.Item
-                  name="notificationReceivers"
-                  label="接收人"
-                  rules={[{ required: true, message: '请选择至少一个接收人' }]}
-                  style={{ marginBottom: 16 }}
+                  name="noAlertNotificationTitle"
+                  label="无预警消息标题"
+                  initialValue="【监控预警】{taskName} 未发现异常"
+                  rules={[{ required: true, message: '请输入消息标题' }]}
                 >
-                  <Select
-                    mode="multiple"
-                    placeholder="请选择接收人"
-                    style={{ width: '100%' }}
-                    options={[
-                      { label: '张三 (zhangsan@example.com)', value: 'user_zhangsan' },
-                      { label: '李四 (lisi@example.com)', value: 'user_lisi' },
-                      { label: '王五 (wangwu@example.com)', value: 'user_wangwu' },
-                      { label: '赵六 (zhaoliu@example.com)', value: 'user_zhaoliu' },
-                      { label: '采购组', value: 'group_purchase' },
-                      { label: '风控组', value: 'group_risk' }
-                    ]}
+                  <Input
+                    placeholder="点击下方变量标签插入"
+                    onFocus={() => setActiveInputField('noAlertTitle')}
                   />
                 </Form.Item>
+              </Col>
+              <Col span={12}>
                 <Form.Item
-                  name="notificationChannels"
-                  label="通知方式"
-                  rules={[{ required: true, message: '请选择至少一种通知方式' }]}
-                  style={{ marginBottom: 0 }}
+                  name="noAlertNotificationDescription"
+                  label="无预警消息内容"
+                  initialValue="任务 {taskName} 在 {time} 时段未发现异常。"
+                  rules={[{ required: true, message: '请输入消息内容' }]}
                 >
-                  <Checkbox.Group
-                    options={[
-                      { label: '邮件', value: 'email' },
-                      { label: '短信', value: 'sms' },
-                      { label: '钉钉', value: 'dingtalk' },
-                      { label: '企业微信', value: 'wechat' }
-                    ]}
+                  <Input
+                    placeholder="点击下方变量标签插入"
+                    onFocus={() => setActiveInputField('noAlertContent')}
                   />
                 </Form.Item>
-              </Card>
-
-              {/* 消息模板 */}
-              <Card size="small" title="消息模板">
-                <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                  <Form.Item
-                    name="alertNotificationTitle"
-                    label="消息标题"
-                    initialValue="【监控预警】{taskName} 发现异常"
-                    rules={[{ required: true, message: '请输入消息标题' }]}
-                    style={{ marginBottom: 0 }}
-                  >
-                    <Input
-                      placeholder="点击下方变量标签插入"
-                      onFocus={() => setActiveInputField('alertTitle')}
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    name="alertNotificationDescription"
-                    label="消息内容"
-                    initialValue="任务【{taskName}】在{time}触发预警（等级：{severity}），命中记录数：{hitCount}。"
-                    style={{ marginBottom: 0 }}
-                  >
-                    <TextArea
-                      rows={4}
-                      placeholder="点击下方变量标签插入"
-                      onFocus={() => setActiveInputField('alertContent')}
-                    />
-                  </Form.Item>
-                </Space>
-                <div style={{ marginTop: 8 }}>
-                  <Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>点击插入变量：</Text>
-                  {templateVariables.map(v => (
-                    <Tag
-                      key={v.key}
-                      color="blue"
-                      style={{ cursor: 'pointer', marginBottom: 4 }}
-                      onClick={() => insertVariable(v.key)}
-                    >
-                      {`{${v.key}}`} {v.label}
-                    </Tag>
-                  ))}
-                </div>
-              </Card>
-            </Space>
+              </Col>
+            </Row>
           </Card>
         </Form>
       </div>
@@ -969,127 +970,119 @@ const MonitoringManagement: React.FC = () => {
 
   // 规则预览页面（AntV S2 报表 demo）
   const renderPreviewPage = () => {
-    // 模拟数据
-    const mockData = [
-      { supplier: '供应商A', product: 'CPU-001', date: '2024-01-15', price: 1200, diff_rate: 15.2 },
-      { supplier: '供应商B', product: 'CPU-002', date: '2024-01-15', price: 1350, diff_rate: 22.5 },
-      { supplier: '供应商A', product: 'GPU-001', date: '2024-01-15', price: 3200, diff_rate: 8.3 },
-      { supplier: '供应商C', product: 'CPU-003', date: '2024-01-15', price: 980, diff_rate: 35.1 },
-      { supplier: '供应商B', product: 'GPU-002', date: '2024-01-15', price: 4500, diff_rate: 12.8 },
+    // 模拟数据 - 参照截图结构
+    const s2MockData = [
+      // SKU001 - 迪安诊断技术集团股份有限公司
+      { skuCode: 'SKU001', productName: '迪安诊断技术集团股份有限公司', brand: '罗氏/Roche', supplierName: '杭州迪安医学检验中心有限公司', productCode: 'SKU01', productSpec: '数码打印机/数码复印机', unitPrice: 1800, supplierCode: '罗氏诊断', supplierType: '电子设备/电子设备', baseSupplier: '罗氏诊断', basePrice: 190, baseProductCode: '罗氏诊断', baseSpec: '专用耗材/设备', diffRate: 5.26, groupSupplier: '迪安诊断技术集团', groupPrice: 1800, groupProductCode: '产品编码', groupSpec: '集团采购' },
+      { skuCode: 'SKU001', productName: '迪安诊断技术集团股份有限公司', brand: '罗氏/Roche', supplierName: '杭州迪安医学检验中心有限公司', productCode: 'SKU02', productSpec: '数码打印机/数码复印机 12%', unitPrice: 1800, supplierCode: '罗氏诊断', supplierType: '电子设备/电子设备', baseSupplier: '罗氏诊断', basePrice: 190, baseProductCode: '罗氏诊断', baseSpec: '专用耗材/设备', diffRate: 5.26, groupSupplier: '迪安诊断技术集团', groupPrice: 1800, groupProductCode: '产品编码', groupSpec: '集团采购' },
+      { skuCode: 'SKU001', productName: '迪安诊断技术集团股份有限公司', brand: '罗氏/Roche', supplierName: '杭州迪安医学检验中心有限公司', productCode: 'SKU03', productSpec: '数码打印机/数码复印机 12%', unitPrice: 1800, supplierCode: '罗氏诊断', supplierType: '电子设备/电子设备', baseSupplier: '罗氏诊断', basePrice: 190, baseProductCode: '罗氏诊断', baseSpec: '专用耗材/设备', diffRate: 5.26, groupSupplier: '迪安诊断技术集团', groupPrice: 1800, groupProductCode: '产品编码', groupSpec: '集团采购' },
+      { skuCode: 'SKU001', productName: '迪安诊断技术集团股份有限公司', brand: '罗氏/Roche', supplierName: '杭州迪安医学检验中心有限公司', productCode: 'SKU04', productSpec: '数码打印机/数码复印机 12%', unitPrice: 1500, supplierCode: '罗氏诊断', supplierType: '电子设备/电子设备', baseSupplier: '罗氏诊断', basePrice: 190, baseProductCode: '罗氏诊断', baseSpec: '专用耗材/设备', diffRate: 5.26, groupSupplier: '迪安诊断技术集团', groupPrice: 1628, groupProductCode: '产品编码', groupSpec: '集团采购' },
+      // SKU001 - 杭州凯莱谱精准医疗检测技术有限公司
+      { skuCode: 'SKU001', productName: '杭州凯莱谱精准医疗检测技术有限公司', brand: '罗氏/Roche', supplierName: '杭州凯莱谱精准医疗检测技术有限公司', productCode: 'SKU01', productSpec: '数码打印机/数码复印机', unitPrice: 1800, supplierCode: '罗氏诊断', supplierType: '电子设备/电子设备', baseSupplier: '罗氏诊断', basePrice: 180, baseProductCode: '罗氏诊断', baseSpec: '专用耗材/设备', diffRate: 0, groupSupplier: '迪安诊断技术集团', groupPrice: 1800, groupProductCode: '产品编码', groupSpec: '集团采购' },
+      { skuCode: 'SKU001', productName: '杭州凯莱谱精准医疗检测技术有限公司', brand: '罗氏/Roche', supplierName: '杭州凯莱谱精准医疗检测技术有限公司', productCode: 'SKU02', productSpec: '数码打印机/数码复印机 12%', unitPrice: 1800, supplierCode: '罗氏诊断', supplierType: '电子设备/电子设备', baseSupplier: '罗氏诊断', basePrice: 180, baseProductCode: '罗氏诊断', baseSpec: '专用耗材/设备', diffRate: 0, groupSupplier: '迪安诊断技术集团', groupPrice: 1800, groupProductCode: '产品编码', groupSpec: '集团采购' },
+      // SKU002
+      { skuCode: 'SKU002', productName: '迪安诊断技术集团股份有限公司', brand: '罗氏/Roche', supplierName: '杭州迪安医学检验中心有限公司', productCode: 'SKU01', productSpec: '全自动生化分析仪 耗材（100...', unitPrice: 175000, supplierCode: '罗氏诊断', supplierType: '分析仪器/分析仪器', baseSupplier: '罗氏诊断', basePrice: 17100, baseProductCode: '罗氏诊断', baseSpec: '专用耗材/设备', diffRate: 2.34, groupSupplier: '迪安诊断技术集团', groupPrice: 165200, groupProductCode: '产品编码', groupSpec: '集团采购' },
+      { skuCode: 'SKU002', productName: '迪安诊断技术集团股份有限公司', brand: '罗氏/Roche', supplierName: '杭州迪安医学检验中心有限公司', productCode: 'SKU02', productSpec: '全自动生化分析仪 耗材（100...', unitPrice: 175000, supplierCode: '罗氏诊断', supplierType: '分析仪器/分析仪器', baseSupplier: '罗氏诊断', basePrice: 17100, baseProductCode: '罗氏诊断', baseSpec: '专用耗材/设备', diffRate: 2.34, groupSupplier: '迪安诊断技术集团', groupPrice: 165200, groupProductCode: '产品编码', groupSpec: '集团采购' },
+      { skuCode: 'SKU002', productName: '迪安诊断技术集团股份有限公司', brand: '罗氏/Roche', supplierName: '杭州迪安医学检验中心有限公司', productCode: 'SKU03', productSpec: '全自动生化分析仪 耗材（100...', unitPrice: 175000, supplierCode: '罗氏诊断', supplierType: '分析仪器/分析仪器', baseSupplier: '罗氏诊断', basePrice: 17100, baseProductCode: '罗氏诊断', baseSpec: '专用耗材/设备', diffRate: 2.34, groupSupplier: '迪安诊断技术集团', groupPrice: 176200, groupProductCode: '产品编码', groupSpec: '集团采购' },
     ];
 
-    const ruleConditions = form.getFieldValue(['rule', 'conditions']) || [];
-    const conditionLogic = form.getFieldValue(['rule', 'conditionLogic']) || 'AND';
+    // S2 配置
+    const s2DataConfig = {
+      fields: {
+        rows: ['skuCode', 'productName', 'brand', 'supplierName'],
+        columns: [],
+        values: ['productCode', 'productSpec', 'unitPrice', 'supplierCode', 'supplierType', 'baseSupplier', 'basePrice', 'baseProductCode', 'baseSpec', 'diffRate', 'groupSupplier', 'groupPrice', 'groupProductCode', 'groupSpec'],
+        valueInCols: true
+      },
+      meta: [
+        { field: 'skuCode', name: '产品编码' },
+        { field: 'productName', name: '产品名称' },
+        { field: 'brand', name: '品牌' },
+        { field: 'supplierName', name: '供应商名称' },
+        { field: 'productCode', name: '产品编码' },
+        { field: 'productSpec', name: '产品规格/分类' },
+        { field: 'unitPrice', name: '供应商价格', formatter: (v: any) => v ? `¥${Number(v).toLocaleString()}` : '-' },
+        { field: 'supplierCode', name: '供应商编码' },
+        { field: 'supplierType', name: '供应商类型' },
+        { field: 'baseSupplier', name: '基准供应商' },
+        { field: 'basePrice', name: '基准价格', formatter: (v: any) => v ? `¥${Number(v).toLocaleString()}` : '-' },
+        { field: 'baseProductCode', name: '基准产品编码' },
+        { field: 'baseSpec', name: '基准规格' },
+        { field: 'diffRate', name: '差异率', formatter: (v: any) => v !== undefined ? `${Number(v).toFixed(2)}%` : '-' },
+        { field: 'groupSupplier', name: '集团供应商' },
+        { field: 'groupPrice', name: '集团价格', formatter: (v: any) => v ? `¥${Number(v).toLocaleString()}` : '-' },
+        { field: 'groupProductCode', name: '集团产品编码' },
+        { field: 'groupSpec', name: '集团采购' }
+      ],
+      data: s2MockData
+    };
+
+    const s2Options = {
+      width: 1400,
+      height: 500,
+      interaction: {
+        selectedCellsSpotlight: true,
+        hoverHighlight: true
+      },
+      style: {
+        layoutWidthType: 'adaptive' as const,
+        cellCfg: {
+          height: 36
+        }
+      },
+      conditions: {
+        text: [
+          {
+            field: 'diffRate',
+            mapping: (value: string | number) => {
+              const numVal = Number(value);
+              if (numVal > 10) return { fill: '#ff4d4f' };
+              if (numVal > 5) return { fill: '#faad14' };
+              return { fill: '#52c41a' };
+            }
+          }
+        ]
+      }
+    };
 
     return (
       <div style={{ padding: 24, background: '#f5f5f5', minHeight: '100vh' }}>
+        {/* 顶部标题栏 */}
         <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <Title level={3} style={{ margin: 0 }}>
-              <Space>
-                <BarChart3 className="h-5 w-5" />
-                监控结果预览
-              </Space>
-            </Title>
-            <Text type="secondary">
-              预览当前规则配置下的匹配数据（示例数据，仅供效果参考）
-            </Text>
-          </div>
-          <Button onClick={() => setViewMode('create')}>
-            返回编辑
-          </Button>
+          <Text type="secondary">监控结果预览 - 基于当前配置的示例数据</Text>
+          <Space>
+            <Button onClick={() => setViewMode('create')}>返回编辑</Button>
+            <Button type="primary">导出</Button>
+          </Space>
         </div>
 
-        {/* 规则摘要 */}
-        <Card style={{ marginBottom: 16 }}>
-          <Row gutter={24}>
-            <Col span={8}>
-              <Text type="secondary">任务名称：</Text>
-              <Text strong>{form.getFieldValue('taskName') || '未命名任务'}</Text>
-            </Col>
-            <Col span={8}>
-              <Text type="secondary">触发条件：</Text>
-              <Text strong>{conditionLogic === 'AND' ? '满足所有条件' : '满足任一条件'}</Text>
-            </Col>
-            <Col span={8}>
-              <Text type="secondary">指标条件数：</Text>
-              <Text strong>{ruleConditions.length} 个</Text>
-            </Col>
-          </Row>
-          {ruleConditions.length > 0 && (
-            <div style={{ marginTop: 12 }}>
-              <Text type="secondary">已配置条件：</Text>
-              <div style={{ marginTop: 4 }}>
-                {ruleConditions.map((cond: any, idx: number) => {
-                  const metric = metricFields.find(m => m.id === cond?.metricId);
-                  let rangeText = '';
-                  if (cond?.min !== undefined && cond?.max !== undefined) {
-                    rangeText = `${cond.min} ~ ${cond.max}`;
-                  } else if (cond?.min !== undefined) {
-                    rangeText = `≥ ${cond.min}`;
-                  } else if (cond?.max !== undefined) {
-                    rangeText = `≤ ${cond.max}`;
-                  }
-                  return (
-                    <Tag key={idx} color="blue" style={{ marginBottom: 4 }}>
-                      {metric?.name || '未知指标'} {rangeText}
-                    </Tag>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </Card>
-
-        {/* AntV S2 报表区域 - 这里用占位符，实际需要集成 @antv/s2 */}
-        <Card title="数据透视表（AntV S2 Demo）" style={{ marginBottom: 16 }}>
-          <div
-            style={{
-              height: 400,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              borderRadius: 8,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff'
-            }}
-          >
-            <BarChart3 style={{ width: 64, height: 64, marginBottom: 16 }} />
-            <Title level={4} style={{ color: '#fff', margin: 0 }}>AntV S2 透视表</Title>
-            <Text style={{ color: 'rgba(255,255,255,0.8)', marginTop: 8 }}>
-              此处将展示 @antv/s2 数据透视表
-            </Text>
-            <Text style={{ color: 'rgba(255,255,255,0.6)', marginTop: 4, fontSize: 12 }}>
-              需要安装 @antv/s2 和 @antv/s2-react 依赖
-            </Text>
+        {/* 查询条件区 */}
+        <Card size="small" style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Button size="small">筛选设置</Button>
+            <Button size="small">+ 导出</Button>
           </div>
         </Card>
 
-        {/* 匹配数据明细 */}
-        <Card title="匹配数据明细">
-          <Table
-            size="small"
-            rowKey="product"
-            dataSource={mockData}
-            pagination={{ pageSize: 10 }}
-            columns={[
-              { title: '供应商', dataIndex: 'supplier', key: 'supplier' },
-              { title: '物料编码', dataIndex: 'product', key: 'product' },
-              { title: '日期', dataIndex: 'date', key: 'date' },
-              { title: '含税价', dataIndex: 'price', key: 'price' },
-              {
-                title: '差异率(%)',
-                dataIndex: 'diff_rate',
-                key: 'diff_rate',
-                render: (val: number) => (
-                  <Text style={{ color: val > 20 ? '#f5222d' : val > 10 ? '#fa8c16' : '#52c41a' }}>
-                    {val}%
-                  </Text>
-                )
-              }
-            ]}
-          />
+        {/* S2 透视表 */}
+        <Card bodyStyle={{ padding: 0 }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 24 }}>
+              <div>
+                <Text type="secondary">组织名称</Text>
+                <div style={{ borderBottom: '2px solid #1890ff', paddingBottom: 4 }}>
+                  <Text strong>集团总部</Text>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style={{ width: '100%', overflowX: 'auto' }}>
+            <SheetComponent
+              dataCfg={s2DataConfig}
+              options={s2Options}
+              sheetType="pivot"
+            />
+          </div>
         </Card>
       </div>
     );
@@ -1177,7 +1170,7 @@ const MonitoringManagement: React.FC = () => {
       render: (record: MonitorTask) => (
         <Space>
           <Button type="link" size="small" onClick={() => handleViewResult(record)}>
-            查看监控结果
+            结果预览
           </Button>
           <Tooltip title="查看详情">
             <Button type="text" icon={<EyeOutlined />} />
@@ -1323,7 +1316,8 @@ const MonitoringManagement: React.FC = () => {
     }
   ];
 
-  const monthlyAlertCount = alertRecords.length;
+  const myMonthlyAlertCount = myAlertRecords.length;
+  const allMonthlyAlertCount = allAlertRecords.length;
 
   if (viewMode === 'create') {
     return renderCreatePage();
@@ -1340,23 +1334,14 @@ const MonitoringManagement: React.FC = () => {
           <Title level={2} style={{ margin: 0 }}>
             <Space>
               <Activity className="h-6 w-6" />
-              监控预警管理
+              比价监控
             </Space>
           </Title>
           <Text type="secondary">配置业务监控规则，及时预警数据异常</Text>
+          <div style={{ marginTop: 6 }}>
+            <Text type="secondary">说明：所有任务为原型演示，后续会接入权限控制。</Text>
+          </div>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            form.resetFields();
-            setMonitorConditions([]);
-            setViewMode('create');
-          }}
-          size="large"
-        >
-          创建监控任务
-        </Button>
       </div>
 
       {/* 统计概览 */}
@@ -1365,7 +1350,7 @@ const MonitoringManagement: React.FC = () => {
           <Card>
             <Statistic
               title="监控任务总数"
-              value={monitorTasks.length}
+              value={activeTab === 'admin' ? allMonitorTasks.length : myMonitorTasks.length}
               prefix={<Target className="h-4 w-4" />}
               valueStyle={{ color: '#1890ff' }}
             />
@@ -1375,7 +1360,7 @@ const MonitoringManagement: React.FC = () => {
           <Card>
             <Statistic
               title="运行中任务"
-              value={monitorTasks.filter(t => t.enabled).length}
+              value={(activeTab === 'admin' ? allMonitorTasks : myMonitorTasks).filter(t => t.enabled).length}
               prefix={<PlayCircleOutlined className="h-4 w-4" />}
               valueStyle={{ color: '#52c41a' }}
             />
@@ -1385,7 +1370,7 @@ const MonitoringManagement: React.FC = () => {
           <Card>
             <Statistic
               title="近一月预警数"
-              value={monthlyAlertCount}
+              value={activeTab === 'admin' ? allMonthlyAlertCount : myMonthlyAlertCount}
               prefix={<WarningOutlined className="h-4 w-4" />}
               valueStyle={{ color: '#fa8c16' }}
             />
@@ -1400,34 +1385,80 @@ const MonitoringManagement: React.FC = () => {
             tab={
               <Space>
                 <Target className="h-4 w-4" />
-                监控任务
+                我的任务
               </Space>
             }
             key="tasks"
           >
-            <Table
-              columns={taskColumns}
-              dataSource={monitorTasks}
-              rowKey="id"
-              pagination={{ pageSize: 10 }}
-            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Tooltip title="当前仅展示你创建的监控任务及其产生的预警记录">
+                <Text type="secondary">范围：我创建的</Text>
+              </Tooltip>
+
+              <Radio.Group
+                value={listView}
+                onChange={(e) => setListView(e.target.value)}
+              >
+                <Radio value="tasks">任务</Radio>
+                <Radio value="alerts">预警记录</Radio>
+              </Radio.Group>
+            </div>
+
+            {listView === 'tasks' ? (
+              <Table
+                columns={taskColumns}
+                dataSource={myMonitorTasks}
+                rowKey="id"
+                pagination={{ pageSize: 10 }}
+              />
+            ) : (
+              <Table
+                columns={alertColumns}
+                dataSource={myAlertRecords.filter(a => a.status === 'active')}
+                rowKey="id"
+                pagination={{ pageSize: 10 }}
+              />
+            )}
           </Tabs.TabPane>
 
           <Tabs.TabPane
             tab={
               <Space>
-                <AlertIcon className="h-4 w-4" />
-                预警记录
+                <Target className="h-4 w-4" />
+                所有任务
               </Space>
             }
-            key="alerts"
+            key="admin"
           >
-            <Table
-              columns={alertColumns}
-              dataSource={alertRecords.filter(a => a.status === 'active')}
-              rowKey="id"
-              pagination={{ pageSize: 10 }}
-            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Tooltip title="所有任务为原型演示：当前展示全部监控任务及其产生的预警记录（后续会接入权限控制）">
+                <Text type="secondary">范围：全部</Text>
+              </Tooltip>
+
+              <Radio.Group
+                value={adminListView}
+                onChange={(e) => setAdminListView(e.target.value)}
+              >
+                <Radio value="tasks">任务</Radio>
+                <Radio value="alerts">预警记录</Radio>
+              </Radio.Group>
+            </div>
+
+            {adminListView === 'tasks' ? (
+              <Table
+                columns={taskColumns}
+                dataSource={allMonitorTasks}
+                rowKey="id"
+                pagination={{ pageSize: 10 }}
+              />
+            ) : (
+              <Table
+                columns={alertColumns}
+                dataSource={allAlertRecords.filter(a => a.status === 'active')}
+                rowKey="id"
+                pagination={{ pageSize: 10 }}
+              />
+            )}
           </Tabs.TabPane>
         </Tabs>
       </Card>

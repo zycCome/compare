@@ -1,28 +1,13 @@
 import React, { useState } from 'react';
-import {
-  Button,
-  Space,
-  Typography,
-  Row,
-  Col,
-  Tag,
-  Dropdown,
-  Divider,
-  Alert
-} from 'antd';
-import {
-  PlusOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  LockOutlined
-} from '@ant-design/icons';
+import { Button } from 'antd';
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import DynamicConditionRenderer from './DynamicConditionRenderer';
 import ConditionSelector from './ConditionSelector';
 import { QueryCondition, FieldMetadata } from './QueryConditionsPanel';
 
 
 interface QueryConditionGroupProps {
-  type: 'comparison' | 'groupPrice' | 'historyPrice';
+  type: 'comparison' | 'groupPrice' | 'historyPrice' | 'metric';
   conditions: QueryCondition[];
   availableFields: FieldMetadata[];
   onUpdateCondition: (conditionId: string, value: any) => void;
@@ -32,7 +17,6 @@ interface QueryConditionGroupProps {
 }
 
 const QueryConditionGroup: React.FC<QueryConditionGroupProps> = ({
-  type,
   conditions,
   availableFields,
   onUpdateCondition,
@@ -41,27 +25,10 @@ const QueryConditionGroup: React.FC<QueryConditionGroupProps> = ({
   allFields
 }) => {
   const [selectorVisible, setSelectorVisible] = useState(false);
-  const [editingCondition, setEditingCondition] = useState<string | null>(null);
 
   // 分离预置条件和自定义条件
   const predefinedConditions = conditions.filter(c => c.isPredefined);
   const customConditions = conditions.filter(c => !c.isPredefined);
-
-  // 获取分组的颜色主题
-  const getGroupTheme = () => {
-    switch (type) {
-      case 'comparison':
-        return { color: 'blue', bgColor: '#f0f7ff' };
-      case 'groupPrice':
-        return { color: 'green', bgColor: '#f6ffed' };
-      case 'historyPrice':
-        return { color: 'purple', bgColor: '#f9f0ff' };
-      default:
-        return { color: 'default', bgColor: '#f5f5f5' };
-    }
-  };
-
-  const theme = getGroupTheme();
 
   // 渲染条件项（行内样式）
   const renderConditionInline = (condition: QueryCondition) => {
@@ -156,7 +123,7 @@ const QueryConditionGroup: React.FC<QueryConditionGroupProps> = ({
       <ConditionSelector
         visible={selectorVisible}
         fields={availableFields}
-        title="选择维度字段"
+        title="选择查询字段"
         onFieldSelect={(field) => {
           onAddCondition(field);
           setSelectorVisible(false);

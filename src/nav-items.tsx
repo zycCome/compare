@@ -155,7 +155,7 @@ export const navItems: NavItem[] = [
     group: "二期",
 },
 {
-    title: "监控预警管理",
+    title: "比价监控",
     to: "/monitoring-management",
     icon: <Activity className="h-4 w-4" />,
     component: MonitoringManagement,

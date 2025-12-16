@@ -2,6 +2,12 @@ import React, { useState, useCallback } from 'react';
 import {
   Card,
   Button,
+  Drawer,
+  Divider,
+  Switch,
+  Radio,
+  Select,
+  Table,
   Tree,
   Input,
   Modal,
@@ -12,6 +18,7 @@ import {
   Typography,
   Empty,
   Spin,
+  Badge,
   List,
   Tag
 } from 'antd';
@@ -24,15 +31,17 @@ import {
   MoreOutlined,
   SearchOutlined,
   DeleteOutlined,
-  SettingOutlined,
   HistoryOutlined
 } from '@ant-design/icons';
 import type { DataNode, EventDataNode } from 'antd/es/tree';
-import { FileText } from 'lucide-react';
 import dayjs from 'dayjs';
+import { useNavigate } from 'react-router-dom';
+import { SheetComponent } from '@antv/s2-react';
+import '@antv/s2-react/dist/s2-react.min.css';
 
 const { Title, Text } = Typography;
 const { Search } = Input;
+const { Option } = Select;
 
 // 报表分组接口
 interface ReportGroup {
@@ -59,7 +68,29 @@ interface ReportItem {
   content?: string; // 报表内容
 }
 
+interface MonitorTaskItem {
+  id: string;
+  name: string;
+  reportId: string;
+  enabled: boolean;
+  scheduleSummary: string;
+  lastCheck: string;
+}
+
+type TotalScope = 'all_filtered' | 'current_page' | 'selected';
+type AggType = 'sum' | 'avg' | 'count';
+
+type TotalMetricKey = 'unitPrice' | 'basePrice' | 'groupPrice' | 'diffRate';
+
+interface TotalMetricSetting {
+  key: TotalMetricKey;
+  label: string;
+  enabled: boolean;
+  agg: AggType;
+}
+
 const ReportCenter: React.FC = () => {
+  const navigate = useNavigate();
   // 模拟分组数据
   const [groups, setGroups] = useState<ReportGroup[]>([
     {
@@ -82,8 +113,35 @@ const ReportCenter: React.FC = () => {
     }
   ]);
 
+  const [monitorTasks] = useState<MonitorTaskItem[]>([
+    {
+      id: 'mt_001',
+      name: '差异率异常监控',
+      reportId: 'report_001',
+      enabled: true,
+      scheduleSummary: '每天 08:00',
+      lastCheck: '2025-12-15 08:00:00'
+    },
+    {
+      id: 'mt_002',
+      name: '供应商高价预警',
+      reportId: 'report_001',
+      enabled: false,
+      scheduleSummary: '每周一 10:00',
+      lastCheck: '2025-12-14 10:00:00'
+    },
+    {
+      id: 'mt_003',
+      name: '集团基准价偏离监控',
+      reportId: 'report_005',
+      enabled: true,
+      scheduleSummary: '每小时',
+      lastCheck: '2025-12-15 09:00:00'
+    }
+  ]);
+
   // 模拟报表数据
-  const [reports, setReports] = useState<ReportItem[]>([
+  const [reports] = useState<ReportItem[]>([
     // 体外诊断试剂分组 - 4个报表
     {
       id: 'report_001',
@@ -226,10 +284,11 @@ const ReportCenter: React.FC = () => {
   const [editingReport, setEditingReport] = useState<ReportItem | null>(null);
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [shareLink, setShareLink] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
   const [editingGroup, setEditingGroup] = useState<ReportGroup | null>(null);
   const [logModalVisible, setLogModalVisible] = useState(false);
   const [currentLogReport, setCurrentLogReport] = useState<ReportItem | null>(null);
+  const [monitorTaskModalVisible, setMonitorTaskModalVisible] = useState(false);
 
   const [groupForm] = Form.useForm();
 
@@ -303,6 +362,73 @@ const ReportCenter: React.FC = () => {
     }));
   };
 
+  // 监控结果预览配置（供右侧内容复用）
+  const monitoringPreviewData = [
+    { skuCode: 'SKU001', productName: '迪安诊断技术集团股份有限公司', brand: '罗氏/Roche', supplierName: '杭州迪安医学检验中心有限公司', productCode: 'SKU01', productSpec: '数码打印机/数码复印机', unitPrice: 1800, supplierCode: '罗氏诊断', supplierType: '电子设备', baseSupplier: '罗氏诊断', basePrice: 190, baseProductCode: '罗氏诊断', baseSpec: '专用耗材', diffRate: 5.26, groupSupplier: '迪安诊断技术集团', groupPrice: 1800, groupProductCode: '产品编码', groupSpec: '集团采购' },
+    { skuCode: 'SKU001', productName: '迪安诊断技术集团股份有限公司', brand: '罗氏/Roche', supplierName: '杭州迪安医学检验中心有限公司', productCode: 'SKU02', productSpec: '数码打印机/复印机 12%', unitPrice: 1500, supplierCode: '罗氏诊断', supplierType: '电子设备', baseSupplier: '罗氏诊断', basePrice: 190, baseProductCode: '罗氏诊断', baseSpec: '专用耗材', diffRate: 3.26, groupSupplier: '迪安诊断技术集团', groupPrice: 1628, groupProductCode: '产品编码', groupSpec: '集团采购' },
+    { skuCode: 'SKU001', productName: '杭州凯莱谱精准医疗检测技术有限公司', brand: '罗氏/Roche', supplierName: '杭州凯莱谱精准医疗检测技术有限公司', productCode: 'SKU01', productSpec: '数码打印机/数码复印机', unitPrice: 1800, supplierCode: '罗氏诊断', supplierType: '电子设备', baseSupplier: '罗氏诊断', basePrice: 180, baseProductCode: '罗氏诊断', baseSpec: '专用耗材', diffRate: 0, groupSupplier: '迪安诊断技术集团', groupPrice: 1800, groupProductCode: '产品编码', groupSpec: '集团采购' },
+    { skuCode: 'SKU002', productName: '迪安诊断技术集团股份有限公司', brand: '罗氏/Roche', supplierName: '杭州迪安医学检验中心有限公司', productCode: 'SKU01', productSpec: '全自动生化分析仪耗材(100…)', unitPrice: 175000, supplierCode: '罗氏诊断', supplierType: '分析仪器', baseSupplier: '罗氏诊断', basePrice: 17100, baseProductCode: '罗氏诊断', baseSpec: '专用耗材', diffRate: 2.34, groupSupplier: '迪安诊断技术集团', groupPrice: 165200, groupProductCode: '产品编码', groupSpec: '集团采购' },
+    { skuCode: 'SKU002', productName: '迪安诊断技术集团股份有限公司', brand: '罗氏/Roche', supplierName: '杭州迪安医学检验中心有限公司', productCode: 'SKU02', productSpec: '全自动生化分析仪耗材(100…)', unitPrice: 175000, supplierCode: '罗氏诊断', supplierType: '分析仪器', baseSupplier: '罗氏诊断', basePrice: 17100, baseProductCode: '罗氏诊断', baseSpec: '专用耗材', diffRate: 4.12, groupSupplier: '迪安诊断技术集团', groupPrice: 176200, groupProductCode: '产品编码', groupSpec: '集团采购' }
+  ];
+
+  const monitoringS2DataConfig = {
+    fields: {
+      rows: ['skuCode', 'productName', 'brand', 'supplierName'],
+      columns: [],
+      values: ['productCode', 'productSpec', 'unitPrice', 'supplierCode', 'supplierType', 'baseSupplier', 'basePrice', 'baseProductCode', 'baseSpec', 'diffRate', 'groupSupplier', 'groupPrice', 'groupProductCode', 'groupSpec'],
+      valueInCols: true
+    },
+    meta: [
+      { field: 'skuCode', name: '产品编码' },
+      { field: 'productName', name: '产品名称' },
+      { field: 'brand', name: '品牌' },
+      { field: 'supplierName', name: '供应商名称' },
+      { field: 'productCode', name: '供应商SKU' },
+      { field: 'productSpec', name: '供应商分类' },
+      { field: 'unitPrice', name: '供应商价格', formatter: (v: any) => (v ? `¥${Number(v).toLocaleString()}` : '-') },
+      { field: 'supplierCode', name: '供应商编码' },
+      { field: 'supplierType', name: '供应商类型' },
+      { field: 'baseSupplier', name: '基准供应商' },
+      { field: 'basePrice', name: '基准价格', formatter: (v: any) => (v ? `¥${Number(v).toLocaleString()}` : '-') },
+      { field: 'baseProductCode', name: '基准SKU' },
+      { field: 'baseSpec', name: '基准分类' },
+      { field: 'diffRate', name: '差异率', formatter: (v: any) => (v !== undefined ? `${Number(v).toFixed(2)}%` : '-') },
+      { field: 'groupSupplier', name: '集团供应商' },
+      { field: 'groupPrice', name: '集团价格', formatter: (v: any) => (v ? `¥${Number(v).toLocaleString()}` : '-') },
+      { field: 'groupProductCode', name: '集团SKU' },
+      { field: 'groupSpec', name: '集团分类' }
+    ],
+    data: monitoringPreviewData
+  };
+
+  const monitoringS2Options = {
+    width: 1400,
+    height: 500,
+    interaction: {
+      selectedCellsSpotlight: true,
+      hoverHighlight: true
+    },
+    style: {
+      layoutWidthType: 'adaptive' as const,
+      cellCfg: {
+        height: 36
+      }
+    },
+    conditions: {
+      text: [
+        {
+          field: 'diffRate',
+          mapping: (value: string | number) => {
+            const numVal = Number(value);
+            if (numVal > 10) return { fill: '#ff4d4f' };
+            if (numVal > 5) return { fill: '#faad14' };
+            return { fill: '#52c41a' };
+          }
+        }
+      ]
+    }
+  };
+
   // 查看报表日志
   const handleViewReportLog = (report: ReportItem) => {
     setCurrentLogReport(report);
@@ -311,7 +437,7 @@ const ReportCenter: React.FC = () => {
 
   // 获取操作类型的中文名称和颜色
   const getOperationInfo = (operation: string) => {
-    const operationMap = {
+    const operationMap: Record<string, { name: string; color: string }> = {
       CREATE: { name: '创建', color: 'green' },
       UPDATE: { name: '更新', color: 'blue' },
       DELETE: { name: '删除', color: 'red' },
@@ -521,14 +647,116 @@ const ReportCenter: React.FC = () => {
     setShareModalVisible(true);
   };
 
+  const handleCreateMonitorTask = (report: ReportItem) => {
+    const reportName = encodeURIComponent(report.name);
+    navigate(`/monitoring-management?reportId=${report.id}&reportName=${reportName}&schemeId=${report.schemeId}`);
+  };
+
   const handleCopyShareLink = () => {
     navigator.clipboard.writeText(shareLink);
     message.success('分享链接已复制到剪贴板');
   };
 
+  const [totalDrawerOpen, setTotalDrawerOpen] = useState(false);
+  const [showGrandTotal, setShowGrandTotal] = useState(true);
+  const [showSubTotal, setShowSubTotal] = useState(false);
+  const [totalScope, setTotalScope] = useState<TotalScope>('all_filtered');
+  const [subTotalGroupBy, setSubTotalGroupBy] = useState<'skuCode' | 'supplierName'>('supplierName');
+  const [totalMetricSettings, setTotalMetricSettings] = useState<TotalMetricSetting[]>([
+    { key: 'unitPrice', label: '供应商价格', enabled: true, agg: 'sum' },
+    { key: 'basePrice', label: '基准价格', enabled: true, agg: 'sum' },
+    { key: 'groupPrice', label: '集团价格', enabled: true, agg: 'sum' },
+    { key: 'diffRate', label: '差异率', enabled: false, agg: 'avg' }
+  ]);
+
+  const [selectedPreviewRowKeys, setSelectedPreviewRowKeys] = useState<React.Key[]>([]);
+  const [previewPage, setPreviewPage] = useState(1);
+  const [previewPageSize, setPreviewPageSize] = useState(5);
+
+  const previewBaseRows = monitoringPreviewData;
+
+  const computeAggValue = (rows: typeof previewBaseRows, field: TotalMetricKey, agg: AggType) => {
+    if (agg === 'count') return rows.length;
+    const nums = rows
+      .map((r: any) => Number(r[field]))
+      .filter((v) => Number.isFinite(v));
+
+    if (nums.length === 0) return 0;
+    if (agg === 'sum') return nums.reduce((a, b) => a + b, 0);
+    return nums.reduce((a, b) => a + b, 0) / nums.length;
+  };
+
+  const getScopeRows = () => {
+    if (totalScope === 'selected') {
+      const keySet = new Set(selectedPreviewRowKeys);
+      return previewBaseRows.filter((r: any) => keySet.has(r.productCode));
+    }
+    if (totalScope === 'current_page') {
+      const start = (previewPage - 1) * previewPageSize;
+      return previewBaseRows.slice(start, start + previewPageSize);
+    }
+    return previewBaseRows;
+  };
+
+  const renderMetricValue = (field: TotalMetricKey, value: number, agg: AggType) => {
+    if (agg === 'count') return value;
+    if (field === 'diffRate') return `${Number(value).toFixed(2)}%`;
+    return `¥${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  };
+
+  const buildSubtotalRows = () => {
+    if (!showSubTotal) return previewBaseRows;
+
+    const grouped = new Map<string, typeof previewBaseRows>();
+    for (const row of previewBaseRows as any[]) {
+      const k = String(row[subTotalGroupBy] ?? '-');
+      const prev = grouped.get(k) ?? [];
+      prev.push(row);
+      grouped.set(k, prev);
+    }
+
+    const merged: any[] = [];
+    for (const [k, rows] of grouped.entries()) {
+      merged.push(...rows);
+
+      const subtotalRow: any = {
+        __rowType: 'subtotal',
+        productCode: `__subtotal__${subTotalGroupBy}__${k}`,
+        skuCode: '',
+        supplierName: '',
+        productName: '',
+        brand: '',
+        productSpec: '',
+        supplierCode: '',
+        supplierType: '',
+        baseSupplier: '',
+        baseProductCode: '',
+        baseSpec: '',
+        groupSupplier: '',
+        groupProductCode: '',
+        groupSpec: ''
+      };
+
+      subtotalRow[subTotalGroupBy] = `小计（${k}）`;
+
+      for (const m of totalMetricSettings) {
+        if (!m.enabled) continue;
+        subtotalRow[m.key] = computeAggValue(rows, m.key, m.agg);
+      }
+
+      merged.push(subtotalRow);
+    }
+    return merged;
+  };
+
   // 渲染右侧内容
   const renderRightContent = () => {
     if (selectedReport) {
+      const relatedMonitorTasks = monitorTasks.filter(t => t.reportId === selectedReport.id);
+      const previewRowsWithSubTotal = buildSubtotalRows();
+      const scopeRows = getScopeRows();
+      const enabledMetrics = totalMetricSettings.filter(m => m.enabled);
+
       return (
         <div className="h-full flex flex-col">
           <div className="flex justify-between items-center mb-4 pb-4 border-b">
@@ -556,15 +784,349 @@ const ReportCenter: React.FC = () => {
             </Space>
           </div>
 
-          <div className="flex-1 bg-gray-50 p-6 rounded-lg">
-            <div className="bg-white p-6 rounded shadow-sm">
-              <Title level={5}>报表内容</Title>
-              <div className="mt-4 p-4 bg-gray-50 rounded">
-                {selectedReport.content || '报表内容加载中...'}
+          <div className="flex-1 bg-gray-50 rounded-lg overflow-auto">
+            <Card size="small" style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <Button size="small">筛选设置</Button>
+                  <Button size="small">导出</Button>
+                  <Button size="small" onClick={() => setTotalDrawerOpen(true)}>汇总设置</Button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Button
+                    size="small"
+                    onClick={() => setMonitorTaskModalVisible(true)}
+                    disabled={relatedMonitorTasks.length === 0}
+                  >
+                    查看监控任务
+                  </Button>
+                  <Button
+                    size="small"
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={() => handleCreateMonitorTask(selectedReport)}
+                  >
+                    创建监控任务
+                  </Button>
+                </div>
               </div>
-              {/* 这里可以放置实际的报表图表和表格 */}
-            </div>
+            </Card>
+            <Card bodyStyle={{ padding: 0 }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 24 }}>
+                  <div>
+                    <Text type="secondary">组织名称</Text>
+                    <div style={{ borderBottom: '2px solid #1890ff', paddingBottom: 4 }}>
+                      <Text strong>集团总部</Text>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ width: '100%', overflowX: 'auto' }}>
+                <SheetComponent
+                  dataCfg={monitoringS2DataConfig}
+                  options={monitoringS2Options}
+                  sheetType="pivot"
+                />
+              </div>
+            </Card>
+
+            <Card title="汇总预览（原型）" style={{ marginTop: 16 }}>
+              <Table
+                size="small"
+                rowKey={(r: any) => r.productCode}
+                dataSource={previewRowsWithSubTotal as any[]}
+                pagination={{
+                  current: previewPage,
+                  pageSize: previewPageSize,
+                  total: previewBaseRows.length,
+                  showSizeChanger: true
+                }}
+                onChange={(pagination) => {
+                  setPreviewPage(pagination.current || 1);
+                  setPreviewPageSize(pagination.pageSize || 5);
+                }}
+                rowSelection={{
+                  selectedRowKeys: selectedPreviewRowKeys,
+                  onChange: (keys) => setSelectedPreviewRowKeys(keys),
+                  getCheckboxProps: (record: any) => ({
+                    disabled: record.__rowType === 'subtotal'
+                  })
+                }}
+                rowClassName={(record: any) => (record.__rowType === 'subtotal' ? 'bg-gray-50 font-medium' : '')}
+                columns={[
+                  {
+                    title: 'SKU',
+                    dataIndex: 'skuCode',
+                    width: 90,
+                    render: (v: any, record: any) => (record.__rowType === 'subtotal' ? '' : v)
+                  },
+                  {
+                    title: '供应商',
+                    dataIndex: 'supplierName',
+                    width: 220,
+                    render: (v: any) => v
+                  },
+                  {
+                    title: '供应商SKU',
+                    dataIndex: 'productCode',
+                    width: 110,
+                    render: (v: any, record: any) => (record.__rowType === 'subtotal' ? '' : v)
+                  },
+                  {
+                    title: '供应商价格',
+                    dataIndex: 'unitPrice',
+                    align: 'right' as const,
+                    width: 120,
+                    render: (v: any, record: any) => {
+                      const n = Number(v);
+                      if (!Number.isFinite(n)) return '-';
+                      return record.__rowType === 'subtotal'
+                        ? renderMetricValue('unitPrice', n, totalMetricSettings.find(m => m.key === 'unitPrice')?.agg || 'sum')
+                        : `¥${n.toLocaleString()}`;
+                    }
+                  },
+                  {
+                    title: '基准价格',
+                    dataIndex: 'basePrice',
+                    align: 'right' as const,
+                    width: 120,
+                    render: (v: any, record: any) => {
+                      const n = Number(v);
+                      if (!Number.isFinite(n)) return '-';
+                      return record.__rowType === 'subtotal'
+                        ? renderMetricValue('basePrice', n, totalMetricSettings.find(m => m.key === 'basePrice')?.agg || 'sum')
+                        : `¥${n.toLocaleString()}`;
+                    }
+                  },
+                  {
+                    title: '集团价格',
+                    dataIndex: 'groupPrice',
+                    align: 'right' as const,
+                    width: 120,
+                    render: (v: any, record: any) => {
+                      const n = Number(v);
+                      if (!Number.isFinite(n)) return '-';
+                      return record.__rowType === 'subtotal'
+                        ? renderMetricValue('groupPrice', n, totalMetricSettings.find(m => m.key === 'groupPrice')?.agg || 'sum')
+                        : `¥${n.toLocaleString()}`;
+                    }
+                  },
+                  {
+                    title: '差异率',
+                    dataIndex: 'diffRate',
+                    align: 'right' as const,
+                    width: 100,
+                    render: (v: any, record: any) => {
+                      const n = Number(v);
+                      if (!Number.isFinite(n) || n === 0) return record.__rowType === 'subtotal' ? '0.00%' : '-';
+                      return record.__rowType === 'subtotal' ? `${n.toFixed(2)}%` : `${n.toFixed(2)}%`;
+                    }
+                  }
+                ]}
+                summary={() => {
+                  if (!showGrandTotal || enabledMetrics.length === 0) return null;
+
+                  const metricToValue = new Map<TotalMetricKey, { value: number; agg: AggType }>();
+                  for (const m of enabledMetrics) {
+                    metricToValue.set(m.key, { value: computeAggValue(scopeRows as any, m.key, m.agg), agg: m.agg });
+                  }
+
+                  return (
+                    <Table.Summary fixed>
+                      <Table.Summary.Row>
+                        <Table.Summary.Cell index={0} colSpan={3}>
+                          <span style={{ fontWeight: 600 }}>总计</span>
+                          <span style={{ color: '#8c8c8c', marginLeft: 8 }}>
+                            {totalScope === 'all_filtered' && '（按当前筛选全量）'}
+                            {totalScope === 'current_page' && '（仅当前页）'}
+                            {totalScope === 'selected' && `（勾选 ${selectedPreviewRowKeys.length} 行）`}
+                          </span>
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={3} align="right">
+                          {metricToValue.has('unitPrice')
+                            ? renderMetricValue('unitPrice', metricToValue.get('unitPrice')!.value, metricToValue.get('unitPrice')!.agg)
+                            : '-'}
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={4} align="right">
+                          {metricToValue.has('basePrice')
+                            ? renderMetricValue('basePrice', metricToValue.get('basePrice')!.value, metricToValue.get('basePrice')!.agg)
+                            : '-'}
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={5} align="right">
+                          {metricToValue.has('groupPrice')
+                            ? renderMetricValue('groupPrice', metricToValue.get('groupPrice')!.value, metricToValue.get('groupPrice')!.agg)
+                            : '-'}
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={6} align="right">
+                          {metricToValue.has('diffRate')
+                            ? renderMetricValue('diffRate', metricToValue.get('diffRate')!.value, metricToValue.get('diffRate')!.agg)
+                            : '-'}
+                        </Table.Summary.Cell>
+                      </Table.Summary.Row>
+                    </Table.Summary>
+                  );
+                }}
+              />
+            </Card>
+
+            <Modal
+              title="关联监控任务"
+              open={monitorTaskModalVisible}
+              onCancel={() => setMonitorTaskModalVisible(false)}
+              footer={null}
+              width={720}
+            >
+              {relatedMonitorTasks.length > 0 ? (
+                <Table
+                  size="small"
+                  rowKey={(r: any) => r.id}
+                  dataSource={relatedMonitorTasks as any[]}
+                  pagination={false}
+                  columns={[
+                    {
+                      title: '任务名称',
+                      dataIndex: 'name',
+                      key: 'name',
+                      render: (text: string, record: any) => (
+                        <Space>
+                          <Text strong>{text}</Text>
+                          {record.enabled ? (
+                            <Badge status="success" text="运行中" />
+                          ) : (
+                            <Badge status="default" text="已停用" />
+                          )}
+                        </Space>
+                      )
+                    },
+                    {
+                      title: '执行频率',
+                      dataIndex: 'scheduleSummary',
+                      key: 'scheduleSummary',
+                      width: 160,
+                      render: (v: string) => <Text>{v}</Text>
+                    },
+                    {
+                      title: '最近执行',
+                      dataIndex: 'lastCheck',
+                      key: 'lastCheck',
+                      width: 160,
+                      render: (v: string) => <Text type="secondary">{v}</Text>
+                    },
+                    {
+                      title: '操作',
+                      key: 'actions',
+                      width: 160,
+                      render: () => (
+                        <Space>
+                          <Button size="small" onClick={() => message.info('查看任务详情：待接入')}>
+                            查看
+                          </Button>
+                        </Space>
+                      )
+                    }
+                  ]}
+                />
+              ) : (
+                <Empty description="暂无关联监控任务" />
+              )}
+            </Modal>
           </div>
+
+          <Drawer
+            title="汇总设置（原型）"
+            open={totalDrawerOpen}
+            onClose={() => setTotalDrawerOpen(false)}
+            width={520}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text>显示总计行</Text>
+                <Switch checked={showGrandTotal} onChange={setShowGrandTotal} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text>显示小计行</Text>
+                <Switch checked={showSubTotal} onChange={setShowSubTotal} />
+              </div>
+
+              <div>
+                <Text>汇总范围</Text>
+                <div style={{ marginTop: 8 }}>
+                  <Radio.Group
+                    value={totalScope}
+                    onChange={(e) => setTotalScope(e.target.value)}
+                    optionType="button"
+                    buttonStyle="solid"
+                  >
+                    <Radio.Button value="all_filtered">全量（按筛选）</Radio.Button>
+                    <Radio.Button value="current_page">当前页</Radio.Button>
+                    <Radio.Button value="selected">勾选行</Radio.Button>
+                  </Radio.Group>
+                </div>
+              </div>
+
+              <div>
+                <Text>小计分组维度</Text>
+                <div style={{ marginTop: 8 }}>
+                  <Select
+                    value={subTotalGroupBy}
+                    onChange={setSubTotalGroupBy}
+                    disabled={!showSubTotal}
+                    style={{ width: '100%' }}
+                  >
+                    <Option value="supplierName">供应商</Option>
+                    <Option value="skuCode">SKU</Option>
+                  </Select>
+                </div>
+              </div>
+
+              <Divider style={{ margin: '8px 0' }} />
+
+              <div>
+                <Text>汇总指标</Text>
+                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {totalMetricSettings.map((m) => (
+                    <div
+                      key={m.key}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 160px',
+                        gap: 12,
+                        alignItems: 'center'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <span>{m.label}</span>
+                        <Switch
+                          checked={m.enabled}
+                          onChange={(checked) => {
+                            setTotalMetricSettings((prev) =>
+                              prev.map((x) => (x.key === m.key ? { ...x, enabled: checked } : x))
+                            );
+                          }}
+                        />
+                      </div>
+
+                      <Select
+                        value={m.agg}
+                        disabled={!m.enabled}
+                        onChange={(agg) => {
+                          setTotalMetricSettings((prev) =>
+                            prev.map((x) => (x.key === m.key ? { ...x, agg } : x))
+                          );
+                        }}
+                      >
+                        <Option value="sum">合计</Option>
+                        <Option value="avg">平均</Option>
+                        <Option value="count">计数</Option>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Drawer>
         </div>
       );
     }
@@ -707,7 +1269,7 @@ const ReportCenter: React.FC = () => {
 
           {/* 树形结构区域 */}
           <div className="flex-1 overflow-auto p-4">
-            <style jsx>{`
+            <style>{`
               .custom-tree .ant-tree-node-content-wrapper {
                 display: flex;
                 align-items: center;

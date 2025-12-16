@@ -1,25 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import {
-  Card,
-  Button,
-  Space,
-  Typography,
-  Row,
-  Col,
-  Divider,
-  Tag,
-  Empty,
-  Collapse,
-  message
-} from 'antd';
-import {
-  PlusOutlined,
-  FilterOutlined,
-  DeleteOutlined,
-  SettingOutlined
-} from '@ant-design/icons';
+import { Card, Button, Space, Typography, Collapse, message } from 'antd';
+import { FilterOutlined, SettingOutlined, BarChartOutlined } from '@ant-design/icons';
 import QueryConditionGroup from './QueryConditionGroup';
-import ConditionSelector from './ConditionSelector';
 
 const { Title } = Typography;
 const { Panel } = Collapse;
@@ -29,8 +11,8 @@ export interface QueryCondition {
   id: string;
   fieldId: string;
   fieldName: string;
-  fieldType: 'dimension' | 'metric';
-  groupType: 'comparison' | 'groupPrice' | 'historyPrice';
+  fieldType: 'dimension' | 'metric' | 'baseline' | 'calculated';
+  groupType: 'comparison' | 'groupPrice' | 'historyPrice' | 'metric' | 'baseline';
   value: any;
   isPredefined: boolean;
   componentType: 'input' | 'select' | 'multiSelect' | 'dateRange' | 'numberRange' | 'modalSelector' | 'metricCompare';
@@ -74,15 +56,15 @@ const QueryConditionsPanel: React.FC<QueryConditionsPanelProps> = ({
   predefinedConditions = [],
   loading = false
 }) => {
-  const [activeGroups, setActiveGroups] = useState<string[]>(['comparison', 'groupPrice', 'historyPrice']);
-  const [selectorVisible, setSelectorVisible] = useState<string | null>(null);
+  const [activeGroups, setActiveGroups] = useState<string[]>(['comparison', 'groupPrice', 'historyPrice', 'metric']);
 
   // 按分组类型组织条件
   const organizeConditionsByGroup = useCallback(() => {
     const groups: Record<string, QueryCondition[]> = {
       comparison: [],
       groupPrice: [],
-      historyPrice: []
+      historyPrice: [],
+      metric: []
     };
 
     // 处理用户添加的条件
@@ -126,7 +108,7 @@ const QueryConditionsPanel: React.FC<QueryConditionsPanelProps> = ({
     field: FieldMetadata
   ) => {
     const usedFieldIds = getUsedFieldIds();
-    if (usedFieldIds.includes(field.id)) {
+    if (usedFieldIds.includes(field.id) && field.type === 'dimension') {
       message.warning('该字段已添加过查询条件');
       return;
     }
@@ -188,23 +170,33 @@ const QueryConditionsPanel: React.FC<QueryConditionsPanelProps> = ({
       title: '比对对象',
       description: '设置比对对象的查询条件',
       icon: <FilterOutlined className="text-blue-600" />,
-      color: 'blue'
+      color: 'blue',
+      allowedFieldTypes: ['dimension']
     },
     {
       key: 'groupPrice',
       title: '集团价',
       description: '设置集团采购价格基准条件',
       icon: <SettingOutlined className="text-green-600" />,
-      color: 'green'
+      color: 'green',
+      allowedFieldTypes: ['dimension']
     },
     {
       key: 'historyPrice',
       title: '历史价',
       description: '设置历史采购价格基准条件',
       icon: <SettingOutlined className="text-purple-600" />,
-      color: 'purple'
+      color: 'purple',
+      allowedFieldTypes: ['dimension']
     },
-    // 指标分组已下沉到预警规则中，这里只负责范围类维度条件
+    {
+      key: 'metric',
+      title: '指标',
+      description: '设置监控指标的阈值或对比条件',
+      icon: <BarChartOutlined className="text-orange-500" />,
+      color: 'orange',
+      allowedFieldTypes: ['metric', 'baseline', 'calculated']
+    }
   ];
 
   if (!visible) {
@@ -240,7 +232,13 @@ const QueryConditionsPanel: React.FC<QueryConditionsPanelProps> = ({
         ghost
       >
         {groupConfigs.map(config => {
-          const groupConditions = groupedConditions[config.key];
+          const groupConditions = groupedConditions[config.key] || [];
+          const allowedFieldTypes = (config as any).allowedFieldTypes as Array<'dimension' | 'metric' | 'baseline' | 'calculated'> | undefined;
+          const availableTypeMatchedFields = availableFields.filter(field => {
+            const allowed = allowedFieldTypes ? allowedFieldTypes.includes(field.type) : field.type === 'dimension';
+            const alreadyUsed = usedFieldIds.includes(field.id);
+            return allowed && (!alreadyUsed || field.type !== 'dimension');
+          });
 
           return (
             <Panel
@@ -258,14 +256,12 @@ const QueryConditionsPanel: React.FC<QueryConditionsPanelProps> = ({
               }
             >
               <QueryConditionGroup
-                type={config.key as 'comparison' | 'groupPrice' | 'historyPrice'}
+                type={config.key as 'comparison' | 'groupPrice' | 'historyPrice' | 'metric'}
                 conditions={groupConditions}
-                availableFields={availableFields.filter(field =>
-                  field.type === 'dimension' && !usedFieldIds.includes(field.id)
-                )}
+                availableFields={availableTypeMatchedFields.filter(field => !usedFieldIds.includes(field.id))}
                 onUpdateCondition={handleUpdateCondition}
                 onRemoveCondition={handleRemoveCondition}
-                onAddCondition={(field) => handleAddCondition(config.key as 'comparison' | 'groupPrice' | 'historyPrice', field)}
+                onAddCondition={(field) => handleAddCondition(config.key as 'comparison' | 'groupPrice' | 'historyPrice' | 'metric', field)}
                 allFields={availableFields}
               />
             </Panel>
