@@ -24,11 +24,12 @@ import PriceModelManagement  from "./pages/PriceModelManagement";
 import PriceCompareRule from "./pages/PriceCompareRule";
 import PriceSchemeManagement from "./pages/PriceSchemeManagement";
 import PriceSchemeManagementV2 from "./pages/PriceSchemeManagementV2";
+import PriceSchemeListV2 from "./pages/PriceSchemeListV2";
 import ComparisonModelManagement from "./pages/ComparisonModelManagement";
 import ComparisonModelManagementV2 from "./pages/ComparisonModelManagementV2";
 import PriceComparisonReports from "./pages/PriceComparisonReports";
 import MonitoringManagement from "./pages/MonitoringManagement";
-
+import MonitoringTaskCreateV2 from "./pages/MonitoringTaskCreateV2";
 
 export interface NavItem {
   title: string;
@@ -36,6 +37,7 @@ export interface NavItem {
   icon: React.ReactElement;
   component: React.ComponentType;
   group?: '一期' | '二期';
+  hidden?: boolean;
 }
 
 /**
@@ -123,8 +125,16 @@ export const navItems: NavItem[] = [
     title: "比价方案新版",
     to: "/price-scheme-v2",
     icon: <TrendingUp className="h-4 w-4" />,
+    component: PriceSchemeListV2,
+    group: "二期",
+},
+{
+    title: "新建比价方案（新版）",
+    to: "/price-scheme-v2/create",
+    icon: <TrendingUp className="h-4 w-4" />,
     component: PriceSchemeManagementV2,
     group: "二期",
+    hidden: true,
 },
 {
     title: "比对模型(卡片布局)",
@@ -148,7 +158,7 @@ export const navItems: NavItem[] = [
     group: "二期",
 },
 {
-    title: "报表中心",
+    title: "比价报表",
     to: "/report-center-v2",
     icon: <FileText className="h-4 w-4" />,
     component: PriceComparisonReports,
@@ -160,5 +170,13 @@ export const navItems: NavItem[] = [
     icon: <Activity className="h-4 w-4" />,
     component: MonitoringManagement,
     group: "二期",
+},
+{
+    title: "创建监控任务（新版）",
+    to: "/monitoring-task-create-v2",
+    icon: <Activity className="h-4 w-4" />,
+    component: MonitoringTaskCreateV2,
+    group: "二期",
+    hidden: true,
 },
 ];

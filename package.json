@@ -26,6 +26,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-js-cron": "^5.2.0",
+    "qnn-react-cron": "^2.0.1",
     "react-router-dom": "^6.23.1",
     "tailwind-merge": "^2.2.1",
     "typescript": "^5.8.3"

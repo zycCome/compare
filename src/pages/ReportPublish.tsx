@@ -1,46 +1,32 @@
 import React, { useState } from 'react';
 import {
-  Card,
   Button,
   Space,
   Typography,
-  Row,
-  Col,
-  Divider,
   Tag,
   message,
   Empty,
   Layout,
-  Collapse,
   Tree,
   Select,
   Tabs,
+  Table,
   Form,
   Input,
-  Popover,
+  Modal,
   Switch,
-  InputNumber
+  Radio
 } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import {
   SaveOutlined,
   EyeOutlined,
-  ClearOutlined,
   DragOutlined,
   PlusOutlined,
-  DeleteOutlined,
   CaretRightOutlined,
   CaretDownOutlined,
   DatabaseOutlined,
-  AimOutlined,
-  CalculatorOutlined,
-  FunctionOutlined,
-  LineChartOutlined,
-  FolderOutlined,
-  FolderOpenOutlined,
-  ApiOutlined,
   SafetyOutlined,
-  TeamOutlined,
   SettingOutlined
 } from '@ant-design/icons';
 import PermissionManagementDialog from '../components/PermissionManagementDialog';
@@ -61,6 +47,21 @@ interface ReportItem {
   type: 'comparison' | 'dimension' | 'metric' | 'calculated' | 'baseline';
   category?: string;
   description?: string;
+  metricConfig?: any;
+}
+
+type TotalRowPosition = 'top' | 'bottom';
+type TotalColPosition = 'left' | 'right';
+type TotalMetricAgg = 'sum' | 'avg' | 'max' | 'min' | 'count';
+
+type FieldArea = 'rows' | 'columns' | 'metrics';
+
+interface ReportFieldSettingItem {
+  key: string;
+  label: string;
+  group?: string;
+  area: FieldArea;
+  enabled: boolean;
 }
 
 // 使用扩展的 DroppedItem 类型
@@ -95,6 +96,38 @@ const ReportPublish: React.FC = () => {
   // 指标配置对话框状态
   const [metricConfigDialogOpen, setMetricConfigDialogOpen] = useState(false);
   const [currentMetricItem, setCurrentMetricItem] = useState<DroppedItem | null>(null);
+
+  const [reportSettingsOpen, setReportSettingsOpen] = useState(false);
+  const [reportSettingsTab, setReportSettingsTab] = useState<'fields' | 'totals'>('fields');
+
+  const [rowTotalEnabled, setRowTotalEnabled] = useState(true);
+  const [rowTotalPosition, setRowTotalPosition] = useState<TotalRowPosition>('bottom');
+  const [colTotalEnabled, setColTotalEnabled] = useState(false);
+  const [colTotalPosition, setColTotalPosition] = useState<TotalColPosition>('right');
+
+  const [totalMetricSettings, setTotalMetricSettings] = useState<
+    { key: string; label: string; enabled: boolean; agg: TotalMetricAgg }[]
+  >([
+    { key: 'supplierPrice', label: '供应商价格', enabled: true, agg: 'avg' },
+    { key: 'basePrice', label: '基准价格', enabled: true, agg: 'avg' },
+    { key: 'groupPrice', label: '集团价格', enabled: true, agg: 'avg' },
+    { key: 'diffRate', label: '差异率', enabled: true, agg: 'avg' }
+  ]);
+
+  const defaultFieldSettings: ReportFieldSettingItem[] = [
+    { key: 'row_productName', label: '产品名称', group: '产品信息', area: 'rows', enabled: true },
+    { key: 'row_brand', label: '品牌', group: '产品信息', area: 'rows', enabled: true },
+    { key: 'row_skuCode', label: 'SKU', group: '产品信息', area: 'rows', enabled: true },
+    { key: 'row_supplierName', label: '供应商', group: '供应商信息', area: 'rows', enabled: true },
+    { key: 'col_org', label: '组织名称', group: '组织', area: 'columns', enabled: true },
+    { key: 'col_time', label: '采购日期', group: '时间', area: 'columns', enabled: true },
+    { key: 'metric_unitPrice', label: '供应商价格', group: '价格', area: 'metrics', enabled: true },
+    { key: 'metric_basePrice', label: '基准价格', group: '价格', area: 'metrics', enabled: true },
+    { key: 'metric_groupPrice', label: '集团价格', group: '价格', area: 'metrics', enabled: true },
+    { key: 'metric_diffRate', label: '差异率', group: '差异', area: 'metrics', enabled: true }
+  ];
+
+  const [fieldSettings, setFieldSettings] = useState<ReportFieldSettingItem[]>(defaultFieldSettings);
 
   // 比价方案数据
   const [schemes] = useState([
@@ -242,7 +275,7 @@ const ReportPublish: React.FC = () => {
     { id: 'dim3', name: '生产厂家', type: 'dimension', componentType: 'multiSelect', options: ['厂家A', '厂家B', '厂家C'], description: '产品生产厂商' },
     { id: 'dim4', name: '省份', type: 'dimension', componentType: 'select', options: ['北京', '上海', '广东', '江苏'], description: '销售区域省份' },
     { id: 'dim5', name: '医院等级', type: 'dimension', componentType: 'select', options: ['三甲', '三乙', '二甲'], description: '医疗机构等级分类' },
-    { id: 'dim6', name: '采购日期', type: 'dimension', componentType: 'dateRangePicker', description: '采购日期范围' },
+    { id: 'dim6', name: '采购日期', type: 'dimension', componentType: 'dateRange', description: '采购日期范围' },
     { id: 'dim7', name: '组织机构', type: 'dimension', componentType: 'modalSelector', description: '选择组织机构' },
 
     // 指标字段
@@ -290,46 +323,49 @@ const ReportPublish: React.FC = () => {
       fieldId: 'dim2',
       fieldName: '规格型号',
       fieldType: 'dimension',
-      groupType: 'baseline',
+      groupType: 'groupPrice',
       value: 'A型',
       isPredefined: true,
-      componentType: 'select',
-      baselineName: '集团价'
+      componentType: 'select'
     },
     {
       id: 'predefined-4',
       fieldId: 'dim3',
       fieldName: '生产厂家',
       fieldType: 'dimension',
-      groupType: 'baseline',
+      groupType: 'groupPrice',
       value: ['厂家A', '厂家B'],
       isPredefined: true,
-      componentType: 'multiSelect',
-      baselineName: '集团价'
+      componentType: 'multiSelect'
     },
     {
       id: 'predefined-5',
       fieldId: 'dim6',
       fieldName: '采购日期',
       fieldType: 'dimension',
-      groupType: 'baseline',
+      groupType: 'historyPrice',
       value: null,
       isPredefined: true,
-      componentType: 'dateRangePicker',
-      baselineName: '历史价'
+      componentType: 'dateRange'
     },
     {
       id: 'predefined-6',
       fieldId: 'dim4',
       fieldName: '省份',
       fieldType: 'dimension',
-      groupType: 'baseline',
+      groupType: 'historyPrice',
       value: ['北京', '上海'],
       isPredefined: true,
-      componentType: 'multiSelect',
-      baselineName: '历史价'
+      componentType: 'multiSelect'
     }
   ];
+
+  const metricAvailableFields = availableFields.map((f) => ({
+    id: f.id,
+    name: f.name,
+    type: f.type,
+    description: f.description ?? ''
+  }));
 
   // 基准对象固定分组配置
   const baselineGroupConfig = [
@@ -456,9 +492,9 @@ const ReportPublish: React.FC = () => {
               id: nodeItem.id,
               name: nodeItem.name,
               type: nodeItem.type as 'metric' | 'calculated' | 'baseline',
-              metricConfig: metricConfig
+              metricConfig: (metricConfig as any) ?? undefined
             }}
-            availableFields={availableFields}
+            availableFields={metricAvailableFields}
             defaultGroupName={defaultGroupName}
             onDefaultGroupNameChange={setDefaultGroupName}
             onSave={(config) => {
@@ -568,7 +604,17 @@ const ReportPublish: React.FC = () => {
           description: values.description,
           config: {
             droppedItems,
-            queryConditions
+            queryConditions,
+            reportSettings: {
+              fields: fieldSettings,
+              totals: {
+                rowTotalEnabled,
+                rowTotalPosition,
+                colTotalEnabled,
+                colTotalPosition,
+                totalMetrics: totalMetricSettings
+              }
+            }
           },
           createTime: dayjs().format('YYYY-MM-DD HH:mm:ss'),
           creator: '当前用户'
@@ -609,7 +655,7 @@ const ReportPublish: React.FC = () => {
     }
 
     // Mock数据生成 - 模拟一些SKU数据
-    const mockData = [];
+    const mockData: any[] = [];
     const mockSKUs = [
       { 'SKU编码': 'SKU001', '产品名称': '生化分析仪A1', '产品类别': '生化试剂' },
       { 'SKU编码': 'SKU002', '产品名称': '化学发光仪B2', '产品类别': '免疫试剂' },
@@ -774,7 +820,7 @@ const ReportPublish: React.FC = () => {
 
   const { data: s2Data, fields: s2Fields } = generateS2Data();
 
-  const s2Options = {
+  const s2Options: any = {
     width: 800,
     height: 400,
     showSeriesNumber: true,
@@ -804,453 +850,46 @@ const ReportPublish: React.FC = () => {
     },
   };
 
-  // 渲染字段项
-  const renderFieldItem = (item: ReportItem, isUsed: boolean = false) => {
-    const getTypeIcon = (type: string) => {
-      switch (type) {
-        case 'comparison': return <DatabaseOutlined className="text-blue-600" />;
-        case 'dimension': return <AimOutlined className="text-cyan-600" />;
-        case 'metric': return <CalculatorOutlined className="text-indigo-600" />;
-        case 'calculated': return <FunctionOutlined className="text-violet-600" />;
-        case 'baseline': return <LineChartOutlined className="text-teal-600" />;
-        default: return <DragOutlined className="text-gray-400" />;
-      }
-    };
-
-    return (
-      <div
-        key={item.id}
-        draggable={!isUsed}
-        onDragStart={(e) => handleDragStart(e, item)}
-        onDragEnd={handleDragEnd}
-        className={`group flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100
-          ${isUsed ? 'opacity-50 cursor-not-allowed' : 'hover:border-l-2 hover:border-l-blue-500 hover:pl-2'}
-          transition-all duration-200 h-10
-        `}
-      >
-        <DragOutlined className="text-gray-400 mr-2 text-xs group-hover:text-blue-500" />
-        {getTypeIcon(item.type)}
-        <span className="ml-2 text-sm flex-1">{item.name}</span>
-        {isUsed && (
-          <Tag size="small" color="default">已使用</Tag>
-        )}
-      </div>
-    );
-  };
-
-  // 渲染字段组
-  const renderFieldGroup = (title: string, items: ReportItem[], icon: React.ReactNode, bgColor: string, textColor: string) => {
-    const usedItemIds = getUsedItemIds();
-    const hasUsedItems = items.some(item => usedItemIds.includes(item.id));
-
-    return (
-      <div className="border border-gray-200 rounded-lg mb-2 overflow-hidden">
-        <div className={`px-3 py-2 flex items-center justify-between ${bgColor}`}>
-          <div className="flex items-center">
-            {icon}
-            <span className={`ml-2 font-medium text-sm ${textColor}`}>{title}</span>
-          </div>
-          <span className={`text-xs ${textColor} opacity-75`}>
-            {items.filter(item => usedItemIds.includes(item.id)).length}/{items.length}
-          </span>
-        </div>
-        <div className="bg-white">
-          {items.map(item => renderFieldItem(item, usedItemIds.includes(item.id)))}
-        </div>
-      </div>
-    );
-  };
-
-  // 渲染已配置项
-  const renderDroppedItem = (item: DroppedItem) => {
-    const getPositionColor = (position: string) => {
-      switch (position) {
-        case 'row': return 'blue';
-        case 'column': return 'green';
-        case 'value': return 'orange';
-        default: return 'default';
-      }
-    };
-
-    const getPositionName = (position: string) => {
-      switch (position) {
-        case 'row': return '行';
-        case 'column': return '列';
-        case 'value': return '值';
-        default: return '';
-      }
-    };
-
-    const getTypeIcon = (type: string) => {
-      switch (type) {
-        case 'comparison': return <DatabaseOutlined className="text-blue-600 text-xs" />;
-        case 'dimension': return <AimOutlined className="text-cyan-600 text-xs" />;
-        case 'metric': return <CalculatorOutlined className="text-indigo-600 text-xs" />;
-        case 'calculated': return <FunctionOutlined className="text-violet-600 text-xs" />;
-        case 'baseline': return <LineChartOutlined className="text-teal-600 text-xs" />;
-        default: return null;
-      }
-    };
-
-    return (
-      <div
-        key={item.id}
-        className={`group flex items-center px-3 py-2 bg-white border rounded cursor-move hover:shadow-md transition-all duration-200
-          border-gray-200 hover:border-${getPositionColor(item.position)}-300
-        `}
-      >
-        <DragOutlined className="text-gray-400 mr-2 text-xs group-hover:text-blue-500" />
-        {getTypeIcon(item.type)}
-
-        {/* 指标名称区域 - 使用悬浮配置组件 */}
-        <div className="ml-2 text-sm flex-1 flex items-center">
-          <span
-            className="cursor-pointer transition-all duration-200 inline-block hover:text-blue-600 hover:font-semibold"
-          >
-            {item.name}
-          </span>
-
-          {/* 仅指标类型显示悬浮配置 */}
-          {(item.type === 'metric' || item.type === 'calculated' || item.type === 'baseline') ? (
-            <MetricHoverConfig
-              item={{
-                id: item.id,
-                name: item.name,
-                type: item.type as 'metric' | 'calculated' | 'baseline',
-                metricConfig: item.metricConfig
-              }}
-              availableFields={availableFields}
-              defaultGroupName={defaultGroupName}
-              onDefaultGroupNameChange={setDefaultGroupName}
-              onSave={(config) => {
-                setDroppedItems(prev =>
-                  prev.map(droppedItem =>
-                    droppedItem.id === item.id
-                      ? { ...droppedItem, metricConfig: config }
-                      : droppedItem
-                  )
-                );
-              }}
-            >
-              <div
-                className="ml-1 flex items-center justify-center w-5 h-5 rounded hover:bg-gray-100 transition-colors duration-200 cursor-help"
-                style={{
-                  color: item.metricConfig ? '#2563eb' : '#9ca3af'
-                }}
-              >
-                <SettingOutlined
-                  style={{
-                    fontSize: '12px',
-                    opacity: item.metricConfig ? 1 : 0.6
-                  }}
-                />
-                {item.metricConfig && (
-                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full"></div>
-                )}
-              </div>
-            </MetricHoverConfig>
-          ) : null}
-        </div>
-
-        <Tag size="small" color={getPositionColor(item.position)} className="mr-2">
-          {getPositionName(item.position)}
-        </Tag>
-        <Button
-          type="text"
-          size="small"
-          icon={<DeleteOutlined />}
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 hover:bg-red-50"
-          onClick={() => removeItem(item.id)}
-        />
-      </div>
-    );
-  };
-
-  // 渲染配置行
-  const renderConfigRow = (
-    label: string,
-    position: 'row' | 'column' | 'value',
-    color: string
-  ) => {
+  const renderConfigRow = (label: string, position: 'row' | 'column' | 'value', color: string) => {
     const positionItems = droppedItems.filter(item => item.position === position);
 
-    const getColorStyle = (color: string) => {
-      switch (color) {
-        case 'blue': return { bg: '#e6f7ff', active: '#1890ff', text: '#1890ff' };
-        case 'green': return { bg: '#e6f9ee', active: '#52c41a', text: '#52c41a' };
-        case 'orange': return { bg: '#fff7e6', active: '#fa8c16', text: '#fa8c16' };
-        default: return { bg: '#f5f5f5', active: '#666', text: '#666' };
-      }
-    };
+    const displayItems: Array<{ id: string; name: string; fixed?: boolean }> =
+      position === 'row'
+        ? [
+            ...fixedComparisonDimensions.map(d => ({ id: d.id, name: d.name, fixed: true })),
+            ...positionItems.map(d => ({ id: d.id, name: d.name }))
+          ]
+        : positionItems.map(d => ({ id: d.id, name: d.name }));
 
-    const colorStyle = getColorStyle(color);
-
-    // 对于行维度，显示固定的维度字段 + 支持拖拽添加其他维度
-    if (position === 'row') {
-      const rowItems = droppedItems.filter(item => item.position === 'row');
-      const allRowItems = [...fixedComparisonDimensions, ...rowItems];
-
-      return (
-        <div
-          className="flex items-center px-1 py-2 border-b border-gray-200 hover:bg-gray-50 transition-colors min-h-[36px]"
-          style={{ gap: '0' }}
-          onDragOver={handleDragOver}
-          onDrop={(e) => {
-            e.preventDefault();
-            if (!draggedItem) return;
-
-            // 只允许维度类型的字段拖拽到行维度
-            if (draggedItem.type !== 'dimension') {
-              message.warning('只能将维度字段拖拽到行维度');
-              return;
-            }
-
-            const droppedItem = {
-              ...draggedItem,
-              position
-            };
-
-            setDroppedItems(prev => {
-              const filtered = prev.filter(item => item.id !== draggedItem.id);
-              return [...filtered, droppedItem];
-            });
-
-            setDraggedItem(null);
-          }}
-        >
-          {/* 标签区域 - 左侧20% */}
-          <div className="w-1/5 flex items-center" style={{ paddingRight: '4px' }}>
-            <Text className="text-sm text-gray-700">{label}</Text>
-          </div>
-
-          {/* 控件区域 - 右侧80% */}
-          <div className="w-4/5">
-            {allRowItems.length === 0 ? (
-              // 下拉选择框样式（假的，只是看起来像下拉框）
-              <div className="h-6 flex items-center">
-                <Select
-                  placeholder={`选择${label}`}
-                  className="w-full"
-                  style={{
-                    fontSize: '14px',
-                    margin: 0
-                  }}
-                  dropdownStyle={{ fontSize: '14px' }}
-                  onDropdownVisibleChange={(open) => {
-                    if (open) {
-                      message.info(`请从左侧拖拽字段到${label}`);
-                    }
-                  }}
-                  open={false}
-                />
-              </div>
-            ) : (
-              // 选项卡样式（固定维度 + 拖拽维度）
-              <div className="flex gap-1 items-center h-6">
-                {allRowItems.map((item, index) => (
-                  <div
-                    key={item.id}
-                    className={`px-2 py-1 text-xs rounded cursor-pointer transition-all border h-6 flex items-center
-                      ${index === 0
-                        ? 'bg-blue-100 text-blue-700 border-blue-300'
-                        : item.id.startsWith('comp-')
-                        ? 'bg-blue-50 text-blue-600 border-blue-200' // 固定维度的样式
-                        : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
-                      }
-                    `}
-                    onClick={() => {
-                      // 这里可以添加选中逻辑
-                    }}
-                  >
-                    <div className="flex items-center gap-1">
-                      {item.type === 'metric' && (
-                        <span className="opacity-75">求和</span>
-                      )}
-                      <span>{item.name}</span>
-
-                      {/* 指标类型添加悬浮配置 */}
-                      {(item.type === 'metric' || item.type === 'calculated' || item.type === 'baseline') ? (
-                        <MetricHoverConfig
-                          item={{
-                            id: item.id,
-                            name: item.name,
-                            type: item.type as 'metric' | 'calculated' | 'baseline',
-                            metricConfig: item.metricConfig
-                          }}
-                          availableFields={availableFields}
-                          defaultGroupName={defaultGroupName}
-                          onDefaultGroupNameChange={setDefaultGroupName}
-                          onSave={(config) => {
-                            setDroppedItems(prev =>
-                              prev.map(droppedItem =>
-                                droppedItem.id === item.id
-                                  ? { ...droppedItem, metricConfig: config }
-                                  : droppedItem
-                              )
-                            );
-                          }}
-                        >
-                          <div
-                            className="ml-1 flex items-center justify-center w-3 h-3 rounded hover:bg-gray-100 transition-colors duration-200 cursor-help"
-                            style={{
-                              color: item.metricConfig ? '#2563eb' : '#d1d5db'
-                            }}
-                          >
-                            <SettingOutlined
-                              style={{
-                                fontSize: '10px',
-                                opacity: item.metricConfig ? 1 : 0.6
-                              }}
-                            />
-                          </div>
-                        </MetricHoverConfig>
-                      ) : null}
-                    </div>
-                    {/* 固定维度不显示删除按钮 */}
-                    {!item.id.startsWith('comp-') && (
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<span className="text-gray-400 hover:text-red-500">×</span>}
-                        className="ml-1 p-0 h-auto min-w-0 text-xs"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDroppedItems(prev => prev.filter(droppedItem => droppedItem.id !== item.id));
-                        }}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
+    const tagColor = color === 'blue' ? 'blue' : color === 'green' ? 'green' : 'purple';
 
     return (
       <div
-        className="flex items-center px-1 py-2 border-b border-gray-200 hover:bg-gray-50 transition-colors min-h-[36px]"
-        style={{ gap: '0' }}
+        className="flex items-start px-3 py-2 border-b border-gray-200 hover:bg-gray-50 transition-colors"
         onDragOver={handleDragOver}
-        onDrop={(e) => {
-          e.preventDefault();
-          if (!draggedItem) return;
-
-          const droppedItem = {
-            ...draggedItem,
-            position
-          };
-
-          setDroppedItems(prev => {
-            const filtered = prev.filter(item => item.id !== draggedItem.id);
-            return [...filtered, droppedItem];
-          });
-
-          setDraggedItem(null);
-        }}
+        onDrop={(e) => handleDrop(e, position)}
       >
-        {/* 标签区域 - 左侧20% */}
         <div className="w-1/5 flex items-center" style={{ paddingRight: '4px' }}>
           <Text className="text-sm text-gray-700">{label}</Text>
         </div>
 
-        {/* 控件区域 - 右侧80% */}
         <div className="w-4/5">
-          {positionItems.length === 0 ? (
-            // 下拉选择框样式
-            <div className="h-6 flex items-center">
-              <Select
-                placeholder={`选择${label}`}
-                className="w-full"
-                style={{
-                  fontSize: '14px',
-                  margin: 0
-                }}
-                dropdownStyle={{ fontSize: '14px' }}
-                onDropdownVisibleChange={(open) => {
-                  if (open) {
-                    message.info(`请从左侧拖拽字段到${label}`);
-                  }
-                }}
-                open={false}
-              />
-            </div>
+          {displayItems.length === 0 ? (
+            <div className="h-8 flex items-center text-xs text-gray-400">拖拽字段到此处</div>
           ) : (
-            // 选项卡样式
-            <div className="flex gap-1 items-center h-6">
-              {positionItems.map((item, index) => (
-                <div
-                  key={item.id}
-                  className={`px-2 py-1 text-xs rounded cursor-pointer transition-all border h-6 flex items-center
-                    ${index === 0
-                      ? position === 'row'
-                        ? 'bg-blue-100 text-blue-700 border-blue-300'
-                        : position === 'column'
-                        ? 'bg-cyan-100 text-cyan-700 border-cyan-300'
-                        : 'bg-indigo-100 text-indigo-700 border-indigo-300'
-                      : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
-                    }
-                  `}
-                  onClick={() => {
-                    // 这里可以添加选中逻辑
+            <div className="flex flex-wrap gap-2">
+              {displayItems.map((it) => (
+                <Tag
+                  key={it.id}
+                  color={tagColor}
+                  closable={!it.fixed}
+                  onClose={(e) => {
+                    e.preventDefault();
+                    if (!it.fixed) removeItem(it.id);
                   }}
                 >
-                  <div className="flex items-center gap-1">
-                    {item.type === 'metric' && (
-                      <span className="opacity-75">求和</span>
-                    )}
-                    <span>{item.name}</span>
-
-                    {/* 指标类型添加悬浮配置 */}
-                    {(item.type === 'metric' || item.type === 'calculated' || item.type === 'baseline') ? (
-                      <MetricHoverConfig
-                        item={{
-                          id: item.id,
-                          name: item.name,
-                          type: item.type as 'metric' | 'calculated' | 'baseline',
-                          metricConfig: item.metricConfig
-                        }}
-                        availableFields={availableFields}
-                        defaultGroupName={defaultGroupName}
-                        onDefaultGroupNameChange={setDefaultGroupName}
-                        onSave={(config) => {
-                          setDroppedItems(prev =>
-                            prev.map(droppedItem =>
-                              droppedItem.id === item.id
-                                ? { ...droppedItem, metricConfig: config }
-                                : droppedItem
-                            )
-                          );
-                        }}
-                      >
-                        <div
-                          className="ml-1 flex items-center justify-center w-3 h-3 rounded hover:bg-gray-100 transition-colors duration-200 cursor-help"
-                          style={{
-                            color: item.metricConfig ? '#2563eb' : '#d1d5db'
-                          }}
-                        >
-                          <SettingOutlined
-                            style={{
-                              fontSize: '10px',
-                              opacity: item.metricConfig ? 1 : 0.6
-                            }}
-                          />
-                        </div>
-                      </MetricHoverConfig>
-                    ) : null}
-                  </div>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<span className="text-gray-400 hover:text-red-500">×</span>}
-                    className="ml-1 p-0 h-auto min-w-0 text-xs"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeItem(item.id);
-                    }}
-                  />
-                </div>
+                  {it.name}
+                </Tag>
               ))}
             </div>
           )}
@@ -1258,8 +897,6 @@ const ReportPublish: React.FC = () => {
       </div>
     );
   };
-
-  const usedItemIds = getUsedItemIds();
 
   return (
     <Layout className="min-h-screen bg-gray-50">
@@ -1439,6 +1076,20 @@ const ReportPublish: React.FC = () => {
                 <Title level={4} className="mb-0 text-sm">报表布局配置</Title>
               </div>
 
+              <div className="bg-gray-50 px-3 py-2 border-b border-gray-100">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setReportSettingsTab('fields');
+                      setReportSettingsOpen(true);
+                    }}
+                  >
+                    报表设置
+                  </Button>
+                </div>
+              </div>
+
               {/* 垂直配置行 */}
               <div className="bg-gray-50">
                 {renderConfigRow('行维度', 'row', 'blue')}
@@ -1498,6 +1149,243 @@ const ReportPublish: React.FC = () => {
           </div>
         </div>
 
+        <Modal
+          title="报表设置"
+          open={reportSettingsOpen}
+          width={980}
+          onCancel={() => setReportSettingsOpen(false)}
+          onOk={() => setReportSettingsOpen(false)}
+          okText="保存"
+          cancelText="关闭"
+          destroyOnClose
+        >
+          <Tabs
+            activeKey={reportSettingsTab}
+            onChange={(k) => setReportSettingsTab(k as any)}
+            items={[
+              {
+                key: 'fields',
+                label: '字段',
+                children: (
+                  <div style={{ display: 'flex', gap: 16 }}>
+                    {([
+                      { title: '行字段显示设置', area: 'rows' as const },
+                      { title: '列字段显示设置', area: 'columns' as const },
+                      { title: '指标字段显示设置', area: 'metrics' as const }
+                    ] as const).map((block) => {
+                      const data = fieldSettings.filter((f) => f.area === block.area);
+                      return (
+                        <div
+                          key={block.area}
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            border: '1px solid #f0f0f0',
+                            borderRadius: 8,
+                            background: '#fff',
+                            overflow: 'hidden'
+                          }}
+                        >
+                          <div
+                            style={{
+                              padding: '10px 12px',
+                              borderBottom: '1px solid #f0f0f0',
+                              background: '#fafafa'
+                            }}
+                          >
+                            <Text strong>{block.title}</Text>
+                          </div>
+                          <div style={{ padding: 12 }}>
+                            <Table
+                              size="small"
+                              rowKey={(r) => r.key}
+                              dataSource={data}
+                              pagination={false}
+                              scroll={{ y: 360 }}
+                              columns={[
+                                {
+                                  title: '字段分组',
+                                  dataIndex: 'group',
+                                  key: 'group',
+                                  width: 120,
+                                  render: (v: string) => <Text type="secondary">{v || '-'}</Text>
+                                },
+                                {
+                                  title: '字段',
+                                  dataIndex: 'label',
+                                  key: 'label',
+                                  render: (v: string) => <Text>{v}</Text>
+                                },
+                                {
+                                  title: '显示',
+                                  dataIndex: 'enabled',
+                                  key: 'enabled',
+                                  width: 80,
+                                  align: 'right' as const,
+                                  render: (_: any, record: ReportFieldSettingItem) => (
+                                    <Switch
+                                      size="small"
+                                      checked={record.enabled}
+                                      onChange={(checked) => {
+                                        setFieldSettings((prev) =>
+                                          prev.map((x) => (x.key === record.key ? { ...x, enabled: checked } : x))
+                                        );
+                                      }}
+                                    />
+                                  )
+                                }
+                              ]}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+              },
+              {
+                key: 'totals',
+                label: '汇总',
+                children: (
+                  <div style={{ paddingTop: 8 }}>
+                    <div
+                      style={{
+                        border: '1px solid #f0f0f0',
+                        borderRadius: 8,
+                        padding: '16px',
+                        background: '#fafafa'
+                      }}
+                    >
+                      <div style={{ marginBottom: 16 }}>
+                        <Text strong style={{ fontSize: 14 }}>总计行列配置</Text>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '12px 0'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                          <Text style={{ width: 72 }}>行总计</Text>
+                          <Radio.Group
+                            value={rowTotalPosition}
+                            onChange={(e) => setRowTotalPosition(e.target.value)}
+                            disabled={!rowTotalEnabled}
+                          >
+                            <Radio value="top">上</Radio>
+                            <Radio value="bottom">下</Radio>
+                          </Radio.Group>
+                        </div>
+                        <Switch checked={rowTotalEnabled} onChange={setRowTotalEnabled} />
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '12px 0'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                          <Text style={{ width: 72 }}>列总计</Text>
+                          <Radio.Group
+                            value={colTotalPosition}
+                            onChange={(e) => setColTotalPosition(e.target.value)}
+                            disabled={!colTotalEnabled}
+                          >
+                            <Radio value="left">左</Radio>
+                            <Radio value="right">右</Radio>
+                          </Radio.Group>
+                        </div>
+                        <Switch checked={colTotalEnabled} onChange={setColTotalEnabled} />
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 16 }}>
+                      <div
+                        style={{
+                          border: '1px solid #f0f0f0',
+                          borderRadius: 8,
+                          padding: '16px',
+                          background: '#fafafa'
+                        }}
+                      >
+                        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                          <Text strong style={{ fontSize: 14 }}>总计指标配置</Text>
+                          <Text type="secondary" style={{ fontSize: 12 }}>配置每个指标的总计计算方式</Text>
+                        </div>
+
+                        <Table
+                          size="small"
+                          bordered
+                          rowKey={(r) => r.key}
+                          pagination={false}
+                          dataSource={totalMetricSettings}
+                          columns={[
+                            {
+                              title: '指标',
+                              dataIndex: 'label',
+                              key: 'label'
+                            },
+                            {
+                              title: '启用',
+                              dataIndex: 'enabled',
+                              key: 'enabled',
+                              width: 110,
+                              align: 'center' as const,
+                              render: (_: any, record: any) => (
+                                <Switch
+                                  size="small"
+                                  checked={record.enabled}
+                                  onChange={(checked) => {
+                                    setTotalMetricSettings((prev) =>
+                                      prev.map((x) => (x.key === record.key ? { ...x, enabled: checked } : x))
+                                    );
+                                  }}
+                                />
+                              )
+                            },
+                            {
+                              title: '计算方式',
+                              dataIndex: 'agg',
+                              key: 'agg',
+                              width: 200,
+                              render: (_: any, record: any) => (
+                                <Select
+                                  size="small"
+                                  value={record.agg}
+                                  style={{ width: 160 }}
+                                  disabled={!record.enabled}
+                                  options={[
+                                    { label: '求和', value: 'sum' },
+                                    { label: '平均', value: 'avg' },
+                                    { label: '最大', value: 'max' },
+                                    { label: '最小', value: 'min' },
+                                    { label: '计数', value: 'count' }
+                                  ]}
+                                  onChange={(agg) => {
+                                    setTotalMetricSettings((prev) =>
+                                      prev.map((x) => (x.key === record.key ? { ...x, agg } : x))
+                                    );
+                                  }}
+                                />
+                              )
+                            }
+                          ]}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
+            ]}
+          />
+        </Modal>
+
         {/* 权限管理对话框 */}
         <PermissionManagementDialog
           open={permissionDialogOpen}
@@ -1517,7 +1405,7 @@ const ReportPublish: React.FC = () => {
               type: currentMetricItem.type as 'metric' | 'calculated' | 'baseline',
               metricConfig: currentMetricItem.metricConfig
             }}
-            availableFields={availableFields}
+            availableFields={metricAvailableFields}
             onSave={handleSaveMetricConfig}
             onClose={handleCloseMetricConfigDialog}
           />

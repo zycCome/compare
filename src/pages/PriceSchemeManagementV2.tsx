@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Card,
   Button,
@@ -21,7 +21,6 @@ import {
   Collapse,
   Switch,
   InputNumber,
-  TreeSelect,
   Radio,
   Dropdown,
   Badge
@@ -56,6 +55,37 @@ const { Panel } = Collapse;
 const PriceSchemeManagementV2: React.FC = () => {
   const [form] = Form.useForm();
 
+  // 权限管理状态
+  const [manageOrg, setManageOrg] = useState<string>(''); // 管理组织
+  const [manageOrgModalVisible, setManageOrgModalVisible] = useState(false); // 管理组织选择弹窗
+  const [applyOrgModalVisible, setApplyOrgModalVisible] = useState(false); // 使用组织选择弹窗
+  const [applyOrgDraft, setApplyOrgDraft] = useState<string[]>([]);
+
+  const mockOrganizations = [
+    {
+      title: '集团总部',
+      value: 'org_group',
+      key: 'org_group',
+      code: 'ORG-GROUP',
+      category: '集团',
+      children: [
+        { title: '子公司A', value: 'org_subsidiary_a', key: 'org_subsidiary_a', code: 'ORG-A', category: '子公司' },
+        { title: '子公司B', value: 'org_subsidiary_b', key: 'org_subsidiary_b', code: 'ORG-B', category: '子公司' }
+      ]
+    },
+    {
+      title: '区域分公司',
+      value: 'org_branch',
+      key: 'org_branch',
+      code: 'ORG-BR',
+      category: '分公司',
+      children: [
+        { title: '华东分公司', value: 'org_branch_east', key: 'org_branch_east', code: 'ORG-BR-E', category: '分公司' },
+        { title: '华南分公司', value: 'org_branch_south', key: 'org_branch_south', code: 'ORG-BR-S', category: '分公司' }
+      ]
+    }
+  ];
+
   // 辅助函数：递归查找组织
   const findOrganizationById = (organizations: any[], id: string): any => {
     for (const org of organizations) {
@@ -75,6 +105,136 @@ const PriceSchemeManagementV2: React.FC = () => {
     const org = findOrganizationById(mockOrganizations, orgId);
     return org ? org.title : orgId;
   };
+
+  const flattenOrganizations = (orgs: any[], level = 0, parentChain: string[] = []): Array<{
+    value: string;
+    title: string;
+    code?: string;
+    category?: string;
+    level: number;
+    fullPath: string;
+  }> => {
+    const result: Array<{ value: string; title: string; code?: string; category?: string; level: number; fullPath: string }> = [];
+    const walk = (items: any[], currentLevel: number, chain: string[]) => {
+      items.forEach((it) => {
+        const nextChain = [...chain, it.title];
+        result.push({
+          value: it.value,
+          title: it.title,
+          code: it.code,
+          category: it.category,
+          level: currentLevel,
+          fullPath: nextChain.join(' / ')
+        });
+        if (Array.isArray(it.children) && it.children.length > 0) {
+          walk(it.children, currentLevel + 1, nextChain);
+        }
+      });
+    };
+    walk(orgs, level, parentChain);
+    return result;
+  };
+
+  const flatOrgOptions = useMemo(
+    () => flattenOrganizations(mockOrganizations),
+    []
+  );
+
+  const [manageOrgSearch, setManageOrgSearch] = useState('');
+  const [manageOrgCategory, setManageOrgCategory] = useState<string | undefined>(undefined);
+  const [applyOrgSearch, setApplyOrgSearch] = useState('');
+  const [applyOrgCategory, setApplyOrgCategory] = useState<string | undefined>(undefined);
+
+  const manageOrgData = useMemo(() => {
+    return flatOrgOptions.filter(org => {
+      const matchKeyword = manageOrgSearch
+        ? org.title.includes(manageOrgSearch) || (org.code || '').includes(manageOrgSearch)
+        : true;
+      const matchCategory = manageOrgCategory ? org.category === manageOrgCategory : true;
+      return matchKeyword && matchCategory;
+    });
+  }, [flatOrgOptions, manageOrgSearch, manageOrgCategory]);
+
+  const applyOrgData = useMemo(() => {
+    return flatOrgOptions.filter(org => {
+      const matchKeyword = applyOrgSearch
+        ? org.title.includes(applyOrgSearch) || (org.code || '').includes(applyOrgSearch)
+        : true;
+      const matchCategory = applyOrgCategory ? org.category === applyOrgCategory : true;
+      return matchKeyword && matchCategory;
+    });
+  }, [flatOrgOptions, applyOrgSearch, applyOrgCategory]);
+
+  const organizationCategories = useMemo(() => {
+    const set = new Set<string>();
+    flatOrgOptions.forEach((org) => {
+      if (org.category) set.add(String(org.category));
+    });
+    return Array.from(set);
+  }, [flatOrgOptions]);
+
+  const organizationColumns = useMemo(
+    () => [
+      {
+        title: '组织编码',
+        dataIndex: 'code',
+        key: 'code',
+        width: 160,
+        render: (v: string) => v || '-'
+      },
+      {
+        title: '组织名称',
+        dataIndex: 'title',
+        key: 'title',
+        width: 260,
+        render: (_: any, record: any) => record.title
+      },
+      {
+        title: '组织类型',
+        dataIndex: 'category',
+        key: 'category',
+        width: 120,
+        render: (v: string) => v || '-'
+      },
+      {
+        title: '路径',
+        dataIndex: 'fullPath',
+        key: 'fullPath',
+        render: (v: string) => v || '-'
+      }
+    ],
+    []
+  );
+
+  const manageOrgRowSelection = useMemo(
+    () => ({
+      type: 'radio' as const,
+      selectedRowKeys: manageOrg ? [manageOrg] : [],
+      onChange: (selectedRowKeys: React.Key[]) => {
+        const next = selectedRowKeys?.[0];
+        if (typeof next === 'string') setManageOrg(next);
+      }
+    }),
+    [manageOrg]
+  );
+
+  const applyOrgRowSelection = useMemo(
+    () => ({
+      type: 'checkbox' as const,
+      selectedRowKeys: applyOrgDraft,
+      onChange: (selectedRowKeys: React.Key[]) => {
+        setApplyOrgDraft((selectedRowKeys || []).filter((k): k is string => typeof k === 'string'));
+      }
+    }),
+    [applyOrgDraft]
+  );
+
+  const applyOrgsValue = Form.useWatch('applyOrgs', form);
+  const applyOrgSummary = useMemo(() => {
+    const arr = Array.isArray(applyOrgsValue) ? applyOrgsValue : [];
+    if (arr.length === 0) return '';
+    return arr.map((id: string) => getOrganizationTitle(id)).join('、');
+  }, [applyOrgsValue]);
 
   // 渲染管理组织选项的组件
   const RenderOrganizationOptions: React.FC<{
@@ -201,9 +361,7 @@ const PriceSchemeManagementV2: React.FC = () => {
     }
   };
 
-  
-  
-
+  // ...
   const [loading, setLoading] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [activeKey, setActiveKey] = useState(['1', '2', '3']); // 默认展开所有面板
@@ -255,6 +413,7 @@ const PriceSchemeManagementV2: React.FC = () => {
     objectName: string;
     datasetId: string;
   }>({ objectName: '', datasetId: '' }); // 新基准对象数据
+  const [newBenchmarkObjectDesc, setNewBenchmarkObjectDesc] = useState<string>('');
   const [selectedDimensions, setSelectedDimensions] = useState<Array<{
     field: string;
     name: string;
@@ -269,10 +428,6 @@ const PriceSchemeManagementV2: React.FC = () => {
     queryScope: {}
   });
 
-  // 权限管理状态
-  const [manageOrg, setManageOrg] = useState<string>(''); // 管理组织
-  const [manageOrgModalVisible, setManageOrgModalVisible] = useState(false); // 管理组织选择弹窗
-
   // 版本管理状态
   const [selectedComparisonModel, setSelectedComparisonModel] = useState<{
     id: string;
@@ -280,6 +435,15 @@ const PriceSchemeManagementV2: React.FC = () => {
     version: string;
     isLatest: boolean;
   } | null>(null); // 当前选择的比对模型及版本
+
+  const [latestVersionInfo, setLatestVersionInfo] = useState<{
+    id: string;
+    name: string;
+    currentVersion: string;
+    latestVersion: string;
+  } | null>(null);
+  const [showVersionUpdateModal, setShowVersionUpdateModal] = useState(false);
+  const [selectKey, setSelectKey] = useState<number>(0);
   
   const [baselineConfig, setBaselineConfig] = useState({
     dataset: '',
@@ -580,6 +744,17 @@ const PriceSchemeManagementV2: React.FC = () => {
   // 分析主题状态
   const [analysisSubjects, setAnalysisSubjects] = useState<string[]>([]);
 
+  // 比对对象（原型：仅用于对象信息/描述展示）
+  const [comparisonObject, setComparisonObject] = useState<{
+    datasetId: string;
+    objectName: string;
+    objectDescription: string;
+  }>({
+    datasetId: 'ds_agreement',
+    objectName: '比对对象-采购协议',
+    objectDescription: ''
+  });
+
   // 基准对象相关状态
   const [datasetModalVisible, setDatasetModalVisible] = useState(false); // 数据集选择弹框状态
   const [selectedBaselineDatasets, setSelectedBaselineDatasets] = useState<Array<{
@@ -588,6 +763,8 @@ const PriceSchemeManagementV2: React.FC = () => {
     description: string;
     recordCount: number;
     objectName?: string; // 添加基准对象名称字段
+    objectDescription?: string; // 方案内对象描述
+    joinDimensions?: string[]; // 关联维度（支持多字段）
   }>>([]);
   const [selectedBaselineDataset, setSelectedBaselineDataset] = useState<{
     id: string;
@@ -595,6 +772,8 @@ const PriceSchemeManagementV2: React.FC = () => {
     description: string;
     recordCount: number;
     objectName?: string; // 添加基准对象名称字段
+    objectDescription?: string;
+    joinDimensions?: string[];
   } | null>(null);
   const [baselineRangeModalVisible, setBaselineRangeModalVisible] = useState(false);
   const [baselineRanges, setBaselineRanges] = useState<Array<{
@@ -678,6 +857,138 @@ const PriceSchemeManagementV2: React.FC = () => {
     { id: 'ds_historical', name: '历史采购数据集', description: '历史采购记录和价格变化', recordCount: 45670 }
   ];
 
+  const mockDatasetFieldsByDatasetId: Record<string, Array<{ field: string; name: string; type: string; attribute: string }>> = {
+    ds_agreement: [
+      { field: 'product_code', name: '产品编码', type: 'string', attribute: '文本' },
+      { field: 'product_name', name: '产品名称', type: 'string', attribute: '文本' },
+      { field: 'sku', name: 'SKU编码', type: 'string', attribute: '文本' },
+      { field: 'org', name: '组织', type: 'string', attribute: '文本' },
+      { field: 'month', name: '采购月', type: 'string', attribute: '文本' },
+      { field: 'price', name: '协议价', type: 'number', attribute: '数值' }
+    ],
+    ds_bid: [
+      { field: 'product_code', name: '产品编码', type: 'string', attribute: '文本' },
+      { field: 'product_name', name: '产品名称', type: 'string', attribute: '文本' },
+      { field: 'sku', name: 'SKU编码', type: 'string', attribute: '文本' },
+      { field: 'org', name: '组织', type: 'string', attribute: '文本' },
+      { field: 'bid_no', name: '招标编号', type: 'string', attribute: '文本' },
+      { field: 'price', name: '中标价', type: 'number', attribute: '数值' }
+    ],
+    ds_market: [
+      { field: 'product_code', name: '产品编码', type: 'string', attribute: '文本' },
+      { field: 'product_name', name: '产品名称', type: 'string', attribute: '文本' },
+      { field: 'sku', name: 'SKU编码', type: 'string', attribute: '文本' },
+      { field: 'org', name: '组织', type: 'string', attribute: '文本' },
+      { field: 'date', name: '日期', type: 'string', attribute: '文本' },
+      { field: 'price', name: '市场价', type: 'number', attribute: '数值' }
+    ],
+    ds_historical: [
+      { field: 'product_code', name: '产品编码', type: 'string', attribute: '文本' },
+      { field: 'product_name', name: '产品名称', type: 'string', attribute: '文本' },
+      { field: 'sku', name: 'SKU编码', type: 'string', attribute: '文本' },
+      { field: 'org', name: '组织', type: 'string', attribute: '文本' },
+      { field: 'io_type', name: '出入库类型', type: 'string', attribute: '文本' },
+      { field: 'qty', name: '出入库数量', type: 'number', attribute: '数值' }
+    ]
+  };
+
+  const requiredComparisonJoinDimensions = useMemo(() => {
+    const fromComparisonSubject = (selectedDimensions || []).map(d => d.field).filter(Boolean);
+    // 比对主体维度至少要有（原型默认产品编码 + 产品名称）
+    return fromComparisonSubject.length > 0 ? fromComparisonSubject : ['product_code', 'product_name'];
+  }, [selectedDimensions]);
+
+  const updateBaselineDataset = (datasetId: string, patch: Partial<{
+    objectName: string;
+    objectDescription: string;
+    joinDimensions: string[];
+  }>) => {
+    setSelectedBaselineDatasets(prev => prev.map(d => {
+      if (d.id !== datasetId) return d;
+      return {
+        ...d,
+        ...patch
+      };
+    }));
+    setSelectedBaselineDataset(prev => {
+      if (!prev || prev.id !== datasetId) return prev;
+      return {
+        ...prev,
+        ...patch
+      };
+    });
+  };
+
+  const getAvailableJoinFieldsForBaseline = (baselineDatasetId: string) => {
+    const baselineFields = mockDatasetFieldsByDatasetId[baselineDatasetId] || [];
+    const baselineSet = new Set(baselineFields.map(f => f.field));
+
+    const comparisonFields = mockDatasetFieldsByDatasetId[comparisonObject.datasetId] || [];
+    const comparisonSet = new Set(comparisonFields.map(f => f.field));
+
+    // 可选 join 字段：比对数据集字段 ∩ 当前基准数据集字段（交集）
+    const intersectionFields = comparisonFields.filter(f => baselineSet.has(f.field));
+
+    // 保证 required 的字段在列表中靠前（如果也在交集中）
+    const requiredFirst: Array<{ field: string; name: string; type: string; attribute: string }> = [];
+    requiredComparisonJoinDimensions.forEach((f) => {
+      if (baselineSet.has(f) && comparisonSet.has(f)) {
+        const meta = intersectionFields.find(x => x.field === f) || baselineFields.find(x => x.field === f);
+        if (meta) requiredFirst.push(meta);
+      }
+    });
+
+    const requiredSet = new Set(requiredFirst.map(x => x.field));
+    const rest = intersectionFields.filter(x => !requiredSet.has(x.field));
+    return [...requiredFirst, ...rest];
+  };
+
+  const getDefaultJoinDimensions = (baselineDatasetId: string) => {
+    const available = getAvailableJoinFieldsForBaseline(baselineDatasetId);
+    const availableSet = new Set(available.map(x => x.field));
+    const required = requiredComparisonJoinDimensions.filter(x => availableSet.has(x));
+    if (required.length > 0) return required;
+    if (availableSet.has('sku')) return ['sku'];
+    return available[0]?.field ? [available[0].field] : [];
+  };
+
+  useEffect(() => {
+    // 当“比对主体维度”或“比对数据集”变化时：
+    // - 重新计算交集可选字段
+    // - 强制所有基准对象的关联维度至少包含 required（若该字段在交集中存在）
+    setSelectedBaselineDatasets(prev => prev.map(b => {
+      const available = getAvailableJoinFieldsForBaseline(b.id).map(x => x.field);
+      const next = (b.joinDimensions || []).filter(x => available.includes(x));
+      const required = requiredComparisonJoinDimensions.filter(x => available.includes(x));
+
+      // 基准对象的 joinDimensions 不能少于 required
+      const merged = Array.from(new Set([...
+        required,
+        ...next
+      ]));
+
+      return {
+        ...b,
+        joinDimensions: merged.length ? merged : getDefaultJoinDimensions(b.id)
+      };
+    }));
+
+    setSelectedBaselineDataset(prev => {
+      if (!prev) return prev;
+      const available = getAvailableJoinFieldsForBaseline(prev.id).map(x => x.field);
+      const next = (prev.joinDimensions || []).filter(x => available.includes(x));
+      const required = requiredComparisonJoinDimensions.filter(x => available.includes(x));
+      const merged = Array.from(new Set([...
+        required,
+        ...next
+      ]));
+      return {
+        ...prev,
+        joinDimensions: merged.length ? merged : getDefaultJoinDimensions(prev.id)
+      };
+    });
+  }, [requiredComparisonJoinDimensions, comparisonObject.datasetId]);
+
   // 模拟数据集字段数据
   const mockDatasetFields = [
     { field: 'product_code', name: '商品编码', type: 'string', attribute: '文本' },
@@ -689,27 +1000,6 @@ const PriceSchemeManagementV2: React.FC = () => {
     { field: 'price', name: '价格', type: 'number', attribute: '数值' },
     { field: 'quantity', name: '数量', type: 'number', attribute: '数值' },
     { field: 'purchase_date', name: '采购日期', type: 'date', attribute: '时间' }
-  ];
-
-  const mockOrganizations = [
-    { 
-      title: '集团总部', 
-      value: 'org_group', 
-      key: 'org_group',
-      children: [
-        { title: '子公司A', value: 'org_subsidiary_a', key: 'org_subsidiary_a' },
-        { title: '子公司B', value: 'org_subsidiary_b', key: 'org_subsidiary_b' }
-      ]
-    },
-    { 
-      title: '分公司', 
-      value: 'org_branch', 
-      key: 'org_branch',
-      children: [
-        { title: '华东分公司', value: 'org_branch_east', key: 'org_branch_east' },
-        { title: '华南分公司', value: 'org_branch_south', key: 'org_branch_south' }
-      ]
-    }
   ];
 
   // 拖拽处理函数
@@ -1113,6 +1403,7 @@ const PriceSchemeManagementV2: React.FC = () => {
                         rules={[{ required: true, message: '请选择比对模型' }]}
                       >
                         <Select
+                          key={selectKey}
                           placeholder="请选择比对模型"
                           onChange={handleComparisonModelChange}
                           value={form.getFieldValue('comparisonModel')}
@@ -1177,6 +1468,47 @@ const PriceSchemeManagementV2: React.FC = () => {
                         )}
                         <SelectOutlined style={{ color: '#bfbfbf', fontSize: '12px' }} />
                       </div>
+                    </div>
+                  </Col>
+                </Row>
+
+                <Row gutter={[16, 16]} style={{ marginTop: '16px' }}>
+                  <Col span={24}>
+                    <div style={{ display: 'flex', alignItems: 'center', minHeight: '32px' }}>
+                      <span style={{ width: '80px', textAlign: 'right', marginRight: '8px', fontSize: '14px' }}>使用组织:</span>
+                      <div
+                        style={{
+                          flex: 1,
+                          maxWidth: '400px',
+                          padding: '4px 8px',
+                          border: '1px solid #d9d9d9',
+                          borderRadius: '4px',
+                          backgroundColor: '#fff',
+                          cursor: 'pointer',
+                          minHeight: '32px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}
+                        onClick={() => {
+                          const current = form.getFieldValue('applyOrgs') || [];
+                          setApplyOrgDraft(Array.isArray(current) ? current : []);
+                          setApplyOrgModalVisible(true);
+                        }}
+                      >
+                        {applyOrgSummary ? (
+                          <span style={{ fontSize: '14px' }}>{applyOrgSummary}</span>
+                        ) : (
+                          <span style={{ fontSize: '14px', color: '#bfbfbf' }}>点击选择使用组织</span>
+                        )}
+                        <SelectOutlined style={{ color: '#bfbfbf', fontSize: '12px' }} />
+                      </div>
+                      <Form.Item name="applyOrgs" hidden rules={[{ required: true, message: '请选择使用组织' }]}>
+                        <Input />
+                      </Form.Item>
+                      <Tooltip title="权限说明：管理组织可编辑/删除/创建任务/创建报表；使用组织仅可查看方案/发布报表。">
+                        <InfoCircleOutlined style={{ color: '#bfbfbf', marginLeft: 8 }} />
+                      </Tooltip>
                     </div>
                   </Col>
                 </Row>
@@ -1324,415 +1656,276 @@ const PriceSchemeManagementV2: React.FC = () => {
               {/* 模块内容 */}
               {activeKey.includes('1') && (
                 <div style={{ padding: '16px' }}>
-                  {/* 比对查询范围 */}
-                  <div style={{ marginBottom: '24px' }}>
-                    <div style={{ 
-                      border: '1px solid #f0f0f0', 
-                      borderRadius: '4px', 
-                      padding: '16px'
-                    }}>
-                      <div style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center',
-                        marginBottom: '16px'
+                  {/* 比对对象模块主体：左侧维度表格 / 右侧比对范围 + 比对指标 */}
+                  <Row gutter={16}>
+                    <Col span={7}>
+                      <div style={{
+                        border: '1px solid #e8e8e8',
+                        borderRadius: '4px',
+                        padding: '12px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'visible'
                       }}>
                         <div style={{
-                          fontSize: '14px',
-                          fontWeight: 'bold',
-                          color: '#333',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px'
-                        }}>
-                          比对范围
-                          <Tooltip title="查询范围不可在比价报表中修改">
-                            <InfoCircleOutlined style={{
-                              fontSize: '12px',
-                              color: '#999',
-                              cursor: 'pointer'
-                            }} />
-                          </Tooltip>
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          <Dropdown
-                            trigger={["click"]}
-                            menu={{
-                              items: availableQueryConditions
-                                .filter(cond => !comparisonRanges.some(r => r.id === cond.id))
-                                .map(cond => ({ key: cond.id, label: cond.name })),
-                              onClick: ({ key }) => handleAddCondition(String(key))
-                            }}
-                          >
-                            <Button 
-                              type="primary"
-                              size="small"
-                              icon={<PlusOutlined />}
-                            >
-                              添加条件
-                            </Button>
-                          </Dropdown>
-                          <Button 
-                            size="small" 
-                            onClick={() => setComparisonRanges([])}
-                          >
-                            清空
-                          </Button>
-                        </div>
-                      </div>
-                      
-                      {/* 显示已设置的比对范围条件（栅格化，行内可放多个条件块） */}
-                      <div style={{ minHeight: '120px' }}>
-                        {comparisonRanges.length === 0 ? (
-                          <div style={{ 
-                            textAlign: 'center', 
-                            color: '#999', 
-                            padding: '40px 0',
-                            fontSize: '14px'
-                          }}>
-                            暂无比对范围条件
-                            <br />
-                            <span style={{ fontSize: '12px' }}>点击"添加条件"按钮添加</span>
-                          </div>
-                        ) : (
-                          <div 
-                            style={{ 
-                              display: 'grid',
-                              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                              gridAutoFlow: 'dense',
-                              gap: '8px'
-                            }}
-                          >
-                            {comparisonRanges.map(range => {
-                              const gridSpan = getGridSpan(range.id);
-                              return (
-                                <div 
-                                  key={range.id}
-                                  style={{ 
-                                    border: '1px solid #f0f0f0',
-                                    borderRadius: '4px',
-                                    padding: '8px 10px',
-                                    backgroundColor: '#fafafa',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 8,
-                                    gridColumn: `span ${gridSpan}`
-                                  }}
-                                >
-                                  <span style={{ fontSize: '12px', color: '#555', fontWeight: 500, flexShrink: 0, width: 100 }}>{range.field}</span>
-                                  <div style={{ flex: 1 }}>
-                                    {renderDefaultControl(range)}
-                                  </div>
-                                  <Button 
-                                    type="text" 
-                                    size="small"
-                                    danger
-                                    icon={<DeleteOutlined />}
-                                    onClick={() => {
-                                      setComparisonRanges(prev => prev.filter(r => r.id !== range.id));
-                                    }}
-                                  />
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* 第二部分：维度和指标选择 */}
-                  <Row gutter={24}>
-                    <Col span={7}>
-                      <div style={{ 
-                        border: '1px solid #e8e8e8', 
-                        borderRadius: '4px', 
-                        padding: '16px',
-                        height: '100%'
-                      }}>
-                        <div style={{ 
-                          fontSize: '14px', 
-                          fontWeight: 'bold', 
-                          marginBottom: '12px',
-                          color: '#333',
                           display: 'flex',
                           justifyContent: 'space-between',
-                          alignItems: 'center'
+                          alignItems: 'center',
+                          marginBottom: 12
                         }}>
-                          <span>比对维度</span>
-                          <Button 
+                          <div style={{ fontSize: 14, fontWeight: 700, color: '#333' }}>比对维度</div>
+                          <Button
                             type="primary"
                             size="small"
                             icon={<PlusOutlined />}
                             onClick={() => setDimensionModalVisible(true)}
                           >
-                            添加维度
+                            添加比对维度
                           </Button>
                         </div>
-                        <Form.Item
-                          name="comparisonDimensions"
-                          rules={[{ required: true, message: '请选择比对维度' }]}
-                        >
-                          <div style={{
-                            minHeight: '100px',
-                            border: '1px dashed #d9d9d9',
-                            borderRadius: '6px',
-                            padding: '12px',
-                            backgroundColor: selectedDimensions.length === 0 ? '#fafafa' : '#fff'
-                          }}>
-                            {selectedDimensions.length === 0 ? (
-                              <div style={{
-                                textAlign: 'center',
-                                color: '#999',
-                                fontSize: '13px',
-                                paddingTop: '20px'
-                              }}>
-                                <div style={{ fontSize: '20px', marginBottom: '8px' }}>📊</div>
-                                <div>点击"添加维度"按钮选择比对维度</div>
-                              </div>
-                            ) : (
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                                {selectedDimensions.map((dimension, index) => (
-                                  <Tag
-                                    key={index}
-                                    closable
-                                    color="blue"
-                                    onClose={() => {
-                                      setSelectedDimensions(prev => 
-                                        prev.filter((_, i) => i !== index)
-                                      );
-                                    }}
-                                    style={{ fontSize: '12px', padding: '4px 8px' }}
-                                  >
-                                    {dimension.name}
-                                    <span style={{ 
-                                      marginLeft: '4px', 
-                                      fontSize: '10px', 
-                                      opacity: 0.7 
-                                    }}>
-                                      ({dimension.attribute})
-                                    </span>
-                                  </Tag>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </Form.Item>
-                      </div>
-                    </Col>
-                    
-                    <Col span={17}>
-                      <div style={{ 
-                        border: '1px solid #e8e8e8', 
-                        borderRadius: '4px', 
-                        padding: '16px',
-                        height: '100%'
-                      }}>
-                        <div style={{ 
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          marginBottom: '12px'
-                        }}>
-                          <span style={{ 
-                            fontSize: '14px', 
-                            fontWeight: 'bold', 
-                            color: '#333'
-                          }}>
-                            比对指标
-                          </span>
-                          <Space>
-                            <Button 
-                              type="primary"
-                              size="small"
-                              onClick={() => setIndicatorModalVisible(true)}
-                            >
-                              选择指标
-                            </Button>
-                            <Button 
-                              type="default"
-                              size="small"
-                              onClick={() => {
-                                setCustomIndicatorModalVisible(true);
-                              }}
-                            >
-                              自定义指标
-                            </Button>
-                          </Space>
-                        </div>
-                        {selectedIndicators.length > 0 ? (
+
+                        <Form.Item name="comparisonDimensions" rules={[{ required: true, message: '请选择比对维度' }]}>
                           <Table
-                            dataSource={selectedIndicators.map(id => {
-                              // 首先检查是否为自定义指标
-                              const customIndicator = customIndicators.find(item => item.id === id);
-                              if (customIndicator) {
-                                return {
-                                  key: id,
-                                  code: customIndicator.code,
-                                  name: customIndicator.name,
-                                  expression: customIndicator.expression,
-                                  unit: '个', // 默认单位
-                                  description: customIndicator.description
-                                };
-                              }
-                              
-                              // 检查是否为计算指标
-                              const calculatedIndicator = calculatedIndicators.find(item => item.id === id);
-                              if (calculatedIndicator) {
-                                return {
-                                  key: id,
-                                  code: calculatedIndicator.code,
-                                  name: calculatedIndicator.name,
-                                  expression: calculatedIndicator.formula,
-                                  unit: calculatedIndicator.unit,
-                                  description: calculatedIndicator.description
-                                };
-                              }
-                              
-                              // 如果不是自定义指标或计算指标，则从预设指标中查找
-                              const indicator = mockIndicators.find(item => item.id === id);
-                              if (!indicator) return null;
-                              return {
-                                key: id,
-                                code: `IND_${id.toUpperCase()}`,
-                                name: indicator.name,
-                                expression: `SUM(${indicator.name})`,
-                                unit: indicator.unit,
-                                description: indicator.description
-                              };
-                            }).filter((item): item is NonNullable<typeof item> => item !== null)}
+                            rowKey="field"
+                            size="small"
+                            pagination={false}
+                            dataSource={selectedDimensions.map((d, idx) => ({ ...d, key: d.field, sort: idx + 1 }))}
+                            locale={{
+                              emptyText: (
+                                <div style={{ textAlign: 'center', color: '#999', padding: '40px 0', fontSize: 12 }}>
+                                  暂无比对维度
+                                </div>
+                              )
+                            }}
                             columns={[
-                              {
-                                title: '指标编码',
-                                dataIndex: 'code',
-                                key: 'code',
-                                width: 120,
-                              },
-                              {
-                                title: '指标名称',
-                                dataIndex: 'name',
-                                key: 'name',
-                                width: 150,
-                                render: (text, record, index) => (
-                                  <Input
-                                    value={text}
-                                    onChange={(e) => {
-                                      // 更新指标名称
-                                      const newValue = e.target.value;
-                                      // 这里需要更新对应的指标数据
-                                      // 由于数据结构复杂，暂时只做UI展示
-                                      message.info('指标名称编辑功能已启用');
-                                    }}
-                                    bordered={false}
-                                    style={{ padding: '4px 0' }}
-                                    placeholder="请输入指标名称"
-                                  />
-                                ),
-                              },
-                              {
-                                title: '指标公式',
-                                dataIndex: 'expression',
-                                key: 'expression',
-                                ellipsis: true,
-                                render: (text, record, index) => (
-                                  <Input
-                                    value={text}
-                                    onChange={(e) => {
-                                      // 更新表达式
-                                      const newValue = e.target.value;
-                                      // 这里需要更新对应的指标数据
-                                      message.info('表达式编辑功能已启用');
-                                    }}
-                                    bordered={false}
-                                    style={{ padding: '4px 0' }}
-                                    placeholder="请输入表达式"
-                                  />
-                                ),
-                              },
-                              {
-                                title: '单位',
-                                dataIndex: 'unit',
-                                key: 'unit',
-                                width: 80,
-                                render: (text, record, index) => (
-                                  <Input
-                                    value={text}
-                                    onChange={(e) => {
-                                      // 更新单位
-                                      const newValue = e.target.value;
-                                      message.info('单位编辑功能已启用');
-                                    }}
-                                    bordered={false}
-                                    style={{ padding: '4px 0' }}
-                                    placeholder="单位"
-                                  />
-                                ),
-                              },
-                              {
-                                title: '描述',
-                                dataIndex: 'description',
-                                key: 'description',
-                                ellipsis: true,
-                                render: (text, record, index) => (
-                                  <Input
-                                    value={text}
-                                    onChange={(e) => {
-                                      // 更新描述
-                                      const newValue = e.target.value;
-                                      message.info('描述编辑功能已启用');
-                                    }}
-                                    bordered={false}
-                                    style={{ padding: '4px 0' }}
-                                    placeholder="请输入描述"
-                                  />
-                                ),
-                              },
+                              { title: '序号', dataIndex: 'sort', key: 'sort', width: 60 },
+                              { title: '名称', dataIndex: 'name', key: 'name', width: 140 },
+                              { title: '编码', dataIndex: 'field', key: 'field' },
                               {
                                 title: '操作',
                                 key: 'action',
-                                width: 100,
-                                render: (_, record) => (
-                                  <Space size="small">
-                                    <Button
-                                      type="text"
-                                      size="small"
-                                      icon={<EditOutlined />}
-                                      onClick={() => {
-                                        message.info('编辑指标功能待实现');
-                                      }}
-                                    />
-                                    <Button
-                                      type="text"
-                                      size="small"
-                                      danger
-                                      icon={<DeleteOutlined />}
-                                      onClick={() => {
-                                        setSelectedIndicators(prev => prev.filter(item => item !== record.key));
-                                      }}
-                                    />
-                                  </Space>
-                                ),
-                              },
+                                width: 60,
+                                render: (_: any, record: any) => (
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    onClick={() => {
+                                      setSelectedDimensions(prev => prev.filter(x => x.field !== record.field));
+                                    }}
+                                  />
+                                )
+                              }
                             ]}
-                            pagination={false}
-                            size="small"
-                            style={{ marginTop: '8px' }}
                           />
-                        ) : (
-                          <div style={{ 
-                            textAlign: 'center', 
-                            color: '#999', 
-                            padding: '40px 0',
-                            fontSize: '14px',
-                            border: '1px dashed #d9d9d9',
-                            borderRadius: '4px',
-                            backgroundColor: '#fafafa'
+                        </Form.Item>
+                      </div>
+                    </Col>
+
+                    <Col span={17}>
+                      <div style={{
+                        border: '1px solid #e8e8e8',
+                        borderRadius: '4px',
+                        padding: '12px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'visible'
+                      }}>
+                        <div style={{
+                          border: '1px solid #f0f0f0',
+                          borderRadius: '4px',
+                          padding: '10px',
+                          marginBottom: 12,
+                          backgroundColor: '#fff'
+                        }}>
+                          <Row gutter={10}>
+                            <Col span={12}>
+                              <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>比对数据集</div>
+                              <Select
+                                value={comparisonObject.datasetId}
+                                style={{ width: '100%' }}
+                                disabled
+                              >
+                                {mockDatasets.map(d => (
+                                  <Option key={d.id} value={d.id}>{d.name}</Option>
+                                ))}
+                              </Select>
+                            </Col>
+                            <Col span={12}>
+                              <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>对象描述</div>
+                              <Input
+                                value={comparisonObject.objectDescription}
+                                onChange={(e) => setComparisonObject(prev => ({ ...prev, objectDescription: e.target.value }))}
+                                placeholder="口径/用途说明"
+                              />
+                            </Col>
+                          </Row>
+                        </div>
+
+                        {/* 比对范围（大区域） */}
+                        <div style={{
+                          flex: 3,
+                          border: '1px solid #f0f0f0',
+                          borderRadius: '4px',
+                          padding: '12px',
+                          marginBottom: 12,
+                          overflow: 'auto'
+                        }}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: 12
                           }}>
-                            暂无比对指标
-                            <br />
-                            <span style={{ fontSize: '12px' }}>点击"选择指标"按钮添加</span>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: '#333', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              比对范围
+                              <Tooltip title="查询范围不可在比价报表中修改">
+                                <InfoCircleOutlined style={{ fontSize: 12, color: '#999' }} />
+                              </Tooltip>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <Dropdown
+                                trigger={["click"]}
+                                menu={{
+                                  items: availableQueryConditions
+                                    .filter(cond => !comparisonRanges.some(r => r.id === cond.id))
+                                    .map(cond => ({ key: cond.id, label: cond.name })),
+                                  onClick: ({ key }) => handleAddCondition(String(key))
+                                }}
+                              >
+                                <Button type="primary" size="small" icon={<PlusOutlined />}>添加比对条件</Button>
+                              </Dropdown>
+                              <Button size="small" onClick={() => setComparisonRanges([])}>清空</Button>
+                            </div>
                           </div>
-                        )}
+
+                          <div style={{ minHeight: 140 }}>
+                            {comparisonRanges.length === 0 ? (
+                              <div style={{ textAlign: 'center', color: '#999', padding: '50px 0', fontSize: 12 }}>
+                                暂无比对范围
+                              </div>
+                            ) : (
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                gridAutoFlow: 'dense',
+                                gap: 8
+                              }}>
+                                {comparisonRanges.map(range => {
+                                  const gridSpan = getGridSpan(range.id);
+                                  return (
+                                    <div
+                                      key={range.id}
+                                      style={{
+                                        border: '1px solid #f0f0f0',
+                                        borderRadius: 4,
+                                        padding: '8px 10px',
+                                        backgroundColor: '#fafafa',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 8,
+                                        gridColumn: `span ${gridSpan}`
+                                      }}
+                                    >
+                                      <span style={{ fontSize: 12, color: '#555', fontWeight: 500, flexShrink: 0, width: 100 }}>{range.field}</span>
+                                      <div style={{ flex: 1 }}>{renderDefaultControl(range)}</div>
+                                      <Button
+                                        type="text"
+                                        size="small"
+                                        danger
+                                        icon={<DeleteOutlined />}
+                                        onClick={() => setComparisonRanges(prev => prev.filter(r => r.id !== range.id))}
+                                      />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 比对指标（小区域，可滚动） */}
+                        <div style={{
+                          flex: 1,
+                          border: '1px solid #f0f0f0',
+                          borderRadius: '4px',
+                          padding: '12px',
+                          overflow: 'auto'
+                        }}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: 8
+                          }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: '#333' }}>比对指标</div>
+                            <Space>
+                              <Button type="primary" size="small" onClick={() => setIndicatorModalVisible(true)}>添加比对指标</Button>
+                              <Button size="small" onClick={() => setCustomIndicatorModalVisible(true)}>自定义指标</Button>
+                            </Space>
+                          </div>
+
+                          {selectedIndicators.length > 0 ? (
+                            <Table
+                              dataSource={selectedIndicators.map(id => {
+                                const customIndicator = customIndicators.find(item => item.id === id);
+                                if (customIndicator) {
+                                  return {
+                                    key: id,
+                                    code: customIndicator.code,
+                                    name: customIndicator.name,
+                                    expression: customIndicator.expression,
+                                    unit: '个',
+                                    description: customIndicator.description
+                                  };
+                                }
+                                const calculatedIndicator = calculatedIndicators.find(item => item.id === id);
+                                if (calculatedIndicator) {
+                                  return {
+                                    key: id,
+                                    code: calculatedIndicator.code,
+                                    name: calculatedIndicator.name,
+                                    expression: calculatedIndicator.formula,
+                                    unit: calculatedIndicator.unit,
+                                    description: calculatedIndicator.description
+                                  };
+                                }
+                                const indicator = mockIndicators.find(item => item.id === id);
+                                if (!indicator) return null;
+                                return {
+                                  key: id,
+                                  code: `IND_${id.toUpperCase()}`,
+                                  name: indicator.name,
+                                  expression: `SUM(${indicator.name})`,
+                                  unit: indicator.unit,
+                                  description: indicator.description
+                                };
+                              }).filter((item): item is NonNullable<typeof item> => item !== null)}
+                              columns={[
+                                { title: '序号', key: 'sort', width: 60, render: (_: any, __: any, index: number) => index + 1 },
+                                { title: '操作', key: 'op', width: 80, render: (_: any, record: any) => (
+                                  <Space size={0}>
+                                    <Button type="text" size="small" icon={<EditOutlined />} onClick={() => message.info('编辑指标功能待实现')} />
+                                    <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => setSelectedIndicators(prev => prev.filter(x => x !== record.key))} />
+                                  </Space>
+                                ) },
+                                { title: '排序', key: 'order', width: 60, render: (_: any, __: any, index: number) => index + 1 },
+                                { title: '名称', dataIndex: 'name', key: 'name', width: 160 },
+                                { title: '指标表达式', dataIndex: 'expression', key: 'expression', ellipsis: true },
+                                { title: '指标单位', dataIndex: 'unit', key: 'unit', width: 100 },
+                                { title: '描述', dataIndex: 'description', key: 'description', ellipsis: true }
+                              ]}
+                              pagination={false}
+                              size="small"
+                              scroll={{ y: 160 }}
+                            />
+                          ) : (
+                            <div style={{ textAlign: 'center', color: '#999', padding: '20px 0', fontSize: 12 }}>
+                              暂无比对指标
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </Col>
                   </Row>
@@ -1838,135 +2031,77 @@ const PriceSchemeManagementV2: React.FC = () => {
                           />
                         </div>
                         
-                        {/* 基准对象列表 */}
-                        <div style={{ flex: 1, overflowY: 'auto' }}>
-                          {selectedBaselineDatasets.length === 0 ? (
-                            <div style={{
-                              textAlign: 'center',
-                              color: '#8c8c8c',
-                              padding: '60px 20px',
-                              fontSize: '14px',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              height: '100%',
-                              minHeight: '300px'
-                            }}>
-                              <InboxOutlined style={{
-                                fontSize: '64px',
-                                color: '#d9d9d9',
-                                marginBottom: '16px'
-                              }} />
-                              <div style={{
-                                fontSize: '16px',
-                                fontWeight: '500',
-                                color: '#595959',
-                                marginBottom: '8px'
-                              }}>
-                                暂无基准对象
-                              </div>
-                              <div style={{
-                                fontSize: '13px',
-                                color: '#8c8c8c',
-                                lineHeight: '1.5'
-                              }}>
-                                基准对象是比价分析的参照标准<br />
-                                点击上方"添加基准对象"按钮开始创建
-                              </div>
-                            </div>
-                          ) : (
-                            selectedBaselineDatasets.map((dataset, index) => (
-                              <div
-                                key={dataset.id}
-                                style={{
-                                  padding: '16px',
-                                  border: selectedBaselineDataset?.id === dataset.id ? '2px solid #52c41a' : '1px solid #e8e8e8',
-                                  borderRadius: '6px',
-                                  marginBottom: '12px',
-                                  cursor: 'pointer',
-                                  backgroundColor: selectedBaselineDataset?.id === dataset.id ? '#f6ffed' : '#fff',
-                                  transition: 'all 0.2s',
-                                  boxShadow: selectedBaselineDataset?.id === dataset.id
-                                    ? '0 2px 8px rgba(82, 196, 26, 0.15)'
-                                    : '0 1px 3px rgba(0, 0, 0, 0.04)',
-                                  position: 'relative',
-                                  overflow: 'hidden'
-                                }}
-                                onClick={() => setSelectedBaselineDataset(dataset)}
-                                onMouseEnter={(e) => {
-                                  if (selectedBaselineDataset?.id !== dataset.id) {
-                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.08)';
-                                    e.currentTarget.style.transform = 'translateY(-1px)';
-                                  }
-                                }}
-                                onMouseLeave={(e) => {
-                                  if (selectedBaselineDataset?.id !== dataset.id) {
-                                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.04)';
-                                    e.currentTarget.style.transform = 'translateY(0)';
-                                  }
-                                }}
-                              >
-                                {/* 选中状态指示器 */}
-                                {selectedBaselineDataset?.id === dataset.id && (
-                                  <div style={{
-                                    position: 'absolute',
-                                    top: '0',
-                                    left: '0',
-                                    right: '0',
-                                    height: '3px',
-                                    backgroundColor: '#52c41a'
-                                  }} />
-                                )}
-
+                        {/* 基准对象列表（表格化） */}
+                        <div style={{ flex: 1, overflow: 'hidden' }}>
+                          <Table
+                            rowKey="id"
+                            size="small"
+                            pagination={false}
+                            dataSource={selectedBaselineDatasets}
+                            scroll={{ y: 360 }}
+                            locale={{
+                              emptyText: (
                                 <div style={{
-                                  fontSize: '15px',
-                                  fontWeight: '600',
-                                  marginBottom: '6px',
-                                  color: '#262626',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '8px'
-                                }}>
-                                  {dataset.objectName || `基准对象-${dataset.name}`}
-                                  {selectedBaselineDataset?.id === dataset.id && (
-                                    <CheckCircleFilled style={{ color: '#52c41a', fontSize: '14px' }} />
-                                  )}
-                                </div>
-
-                                <div style={{
-                                  fontSize: '13px',
+                                  textAlign: 'center',
                                   color: '#8c8c8c',
-                                  marginBottom: '10px',
-                                  lineHeight: '1.4'
+                                  padding: '40px 20px',
+                                  fontSize: '14px'
                                 }}>
-                                  数据集: {dataset.name}
+                                  <div style={{ marginBottom: 8, fontWeight: 500 }}>暂无基准对象</div>
+                                  <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+                                    基准对象是比价分析的参照标准
+                                    <br />
+                                    点击上方“添加基准对象”开始创建
+                                  </div>
                                 </div>
-
-                                {dataset.description && (
-                                  <div style={{
-                                    fontSize: '12px',
-                                    color: '#bfbfbf',
-                                    marginBottom: '12px',
-                                    lineHeight: '1.3',
-                                    fontStyle: 'italic'
-                                  }}>
-                                    {dataset.description}
-                                  </div>
-                                )}
-
-                                <div style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  marginTop: 'auto'
-                                }}>
-                                  <div style={{
-                                    fontSize: '11px',
-                                    color: '#d9d9d9'
-                                  }}>
-                                    点击选择此基准对象
-                                  </div>
+                              )
+                            }}
+                            rowSelection={{
+                              type: 'radio',
+                              selectedRowKeys: selectedBaselineDataset?.id ? [selectedBaselineDataset.id] : [],
+                              onChange: (_keys, rows) => {
+                                const r = (rows as any[])?.[0];
+                                if (r) setSelectedBaselineDataset(r);
+                              }
+                            }}
+                            onRow={(record) => ({
+                              onClick: () => setSelectedBaselineDataset(record)
+                            })}
+                            columns={[
+                              {
+                                title: '#',
+                                key: 'index',
+                                width: 50,
+                                render: (_: any, __: any, index: number) => index + 1
+                              },
+                              {
+                                title: '名称',
+                                dataIndex: 'objectName',
+                                key: 'objectName',
+                                width: 160,
+                                render: (_: any, record: any) => {
+                                  const name = record.objectName || `基准对象-${record.name}`;
+                                  const desc = record.objectDescription || '';
+                                  return desc ? (
+                                    <Tooltip title={desc}>
+                                      <span>{name}</span>
+                                    </Tooltip>
+                                  ) : (
+                                    <span>{name}</span>
+                                  );
+                                }
+                              },
+                              {
+                                title: '数据集',
+                                dataIndex: 'name',
+                                key: 'name',
+                                width: 160
+                              },
+                              {
+                                title: '操作',
+                                key: 'action',
+                                width: 70,
+                                render: (_: any, record: any) => (
                                   <Button
                                     type="text"
                                     size="small"
@@ -1974,29 +2109,17 @@ const PriceSchemeManagementV2: React.FC = () => {
                                     icon={<DeleteOutlined />}
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      const newDatasets = selectedBaselineDatasets.filter((_, i) => i !== index);
+                                      const newDatasets = selectedBaselineDatasets.filter(d => d.id !== record.id);
                                       setSelectedBaselineDatasets(newDatasets);
-                                      if (selectedBaselineDataset?.id === dataset.id) {
+                                      if (selectedBaselineDataset?.id === record.id) {
                                         setSelectedBaselineDataset(newDatasets[0] || null);
                                       }
                                     }}
-                                    style={{
-                                      opacity: 0.7,
-                                      transition: 'opacity 0.2s'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.opacity = '1';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.opacity = '0.7';
-                                    }}
-                                  >
-                                    移除
-                                  </Button>
-                                </div>
-                              </div>
-                            ))
-                          )}
+                                  />
+                                )
+                              }
+                            ]}
+                          />
                         </div>
                       </div>
                     </Col>
@@ -2007,19 +2130,62 @@ const PriceSchemeManagementV2: React.FC = () => {
                         border: '1px solid #e8e8e8', 
                         borderRadius: '4px', 
                         padding: '16px',
-                        height: '500px',
                         display: 'flex',
-                        flexDirection: 'column'
+                        flexDirection: 'column',
+                        overflow: 'visible'
                       }}>
                         {selectedBaselineDataset ? (
                           <>
-                            {/* 上半部分：基准范围 */}
-                            <div style={{ 
-                              flex: 1,
-                              marginBottom: '16px',
+                            {/* 对象信息 + 关联维度（原型） */}
+                            <div style={{
                               border: '1px solid #f0f0f0',
                               borderRadius: '4px',
-                              padding: '16px'
+                              padding: '10px',
+                              marginBottom: '10px',
+                              backgroundColor: '#fff'
+                            }}>
+                              <Row gutter={10}>
+                                <Col span={12}>
+                                  <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>关联维度（Join Key）</div>
+                                  <Select
+                                    mode="multiple"
+                                    style={{ width: '100%' }}
+                                    value={selectedBaselineDataset.joinDimensions || getDefaultJoinDimensions(selectedBaselineDataset.id)}
+                                    placeholder="默认 sku，可多选"
+                                    options={getAvailableJoinFieldsForBaseline(selectedBaselineDataset.id).map(f => ({
+                                      label: `${f.name} (${f.field})`,
+                                      value: f.field
+                                    }))}
+                                    onChange={(v) => {
+                                      const available = getAvailableJoinFieldsForBaseline(selectedBaselineDataset.id).map(x => x.field);
+                                      const next = (Array.isArray(v) ? v : []).filter(x => available.includes(x));
+                                      const required = requiredComparisonJoinDimensions.filter(x => available.includes(x));
+                                      const merged = Array.from(new Set([...required, ...next]));
+                                      if (required.some(r => !next.includes(r))) {
+                                        message.warning('关联维度必须包含比对主体维度，已自动补齐');
+                                      }
+                                      updateBaselineDataset(selectedBaselineDataset.id, { joinDimensions: merged });
+                                    }}
+                                  />
+                                </Col>
+                                <Col span={12}>
+                                  <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>对象描述</div>
+                                  <Input
+                                    value={selectedBaselineDataset.objectDescription || ''}
+                                    onChange={(e) => updateBaselineDataset(selectedBaselineDataset.id, { objectDescription: e.target.value })}
+                                    placeholder="口径/用途说明"
+                                  />
+                                </Col>
+                              </Row>
+                            </div>
+
+                            {/* 上半部分：基准范围 */}
+                            <div style={{ 
+                              flex: 2,
+                              marginBottom: '12px',
+                              border: '1px solid #f0f0f0',
+                              borderRadius: '4px',
+                              padding: '12px'
                             }}>
                               <div style={{ 
                                 display: 'flex',
@@ -2132,10 +2298,11 @@ const PriceSchemeManagementV2: React.FC = () => {
                             
                             {/* 下半部分：基准指标 */}
                             <div style={{ 
-                              flex: 1,
+                              flex: 3,
                               border: '1px solid #f0f0f0',
                               borderRadius: '4px',
-                              padding: '16px'
+                              padding: '12px',
+                              overflow: 'visible'
                             }}>
                               <div style={{ 
                                 display: 'flex',
@@ -2951,6 +3118,7 @@ const PriceSchemeManagementV2: React.FC = () => {
             const newCustomIndicator = {
               id: newIndicatorId,
               name: indicator.metricName,
+              code: `CUST_${Date.now()}`,
               description: indicator.bizSpec || '',
               expression: indicator.expression || ''
             };
@@ -2973,7 +3141,7 @@ const PriceSchemeManagementV2: React.FC = () => {
             const newMetric = {
               id: `custom_${Date.now()}`,
               name: indicator.metricName,
-              unit: indicator.unit || '个'
+              unit: '个'
             };
             setSelectedBaselineMetrics(prev => [...prev, newMetric]);
 
@@ -2998,9 +3166,10 @@ const PriceSchemeManagementV2: React.FC = () => {
             const newCalculatedIndicator = {
               id: newIndicatorId,
               name: indicator.metricName,
+              code: `CALC_${Date.now()}`,
               description: indicator.bizSpec || '',
-              formula: indicator.expression || indicator.formula || '',
-              unit: indicator.unit || '个'
+              formula: indicator.expression || '',
+              unit: '个'
             };
             setCalculatedIndicators(prev => [...prev, newCalculatedIndicator]);
 
@@ -3016,11 +3185,7 @@ const PriceSchemeManagementV2: React.FC = () => {
         <Modal
           title="添加基准对象"
           open={showAddBenchmarkObjectModal}
-          width={800}
-          onCancel={() => {
-            setShowAddBenchmarkObjectModal(false);
-            setNewBenchmarkObject({ objectName: '', datasetId: '' });
-          }}
+          onCancel={() => setShowAddBenchmarkObjectModal(false)}
           onOk={() => {
             // 验证输入
             if (!newBenchmarkObject.objectName.trim()) {
@@ -3045,23 +3210,29 @@ const PriceSchemeManagementV2: React.FC = () => {
             const selectedDataset = mockDatasets.find(d => d.id === newBenchmarkObject.datasetId);
             if (selectedDataset) {
               // 添加到基准对象列表
+              const availableJoinFields = getAvailableJoinFieldsForBaseline(selectedDataset.id);
+              const defaultJoinDimensions = availableJoinFields.some(f => f.field === 'sku')
+                ? ['sku']
+                : (availableJoinFields[0]?.field ? [availableJoinFields[0].field] : []);
+
               const newObject = {
                 ...selectedDataset,
-                objectName: newBenchmarkObject.objectName.trim()
+                objectName: newBenchmarkObject.objectName.trim(),
+                objectDescription: newBenchmarkObjectDesc || '',
+                joinDimensions: defaultJoinDimensions
               };
-              setSelectedBaselineDatasets([...selectedBaselineDatasets, newObject]);
 
-              // 如果是第一个基准对象，自动选中
-              if (selectedBaselineDatasets.length === 0) {
-                setSelectedBaselineDataset(newObject);
-              }
+              setSelectedBaselineDatasets(prev => [...prev, newObject]);
+              setSelectedBaselineDataset(newObject);
 
               // 重置并关闭弹窗
               setNewBenchmarkObject({ objectName: '', datasetId: '' });
+              setNewBenchmarkObjectDesc('');
               setShowAddBenchmarkObjectModal(false);
               message.success('基准对象添加成功');
             }
           }}
+          width={800}
         >
           <Form layout="vertical">
             <Row gutter={24}>
@@ -3120,6 +3291,16 @@ const PriceSchemeManagementV2: React.FC = () => {
                   </Select>
                 </Form.Item>
               </Col>
+              <Col span={24}>
+                <Form.Item label="对象描述">
+                  <Input.TextArea
+                    value={newBenchmarkObjectDesc}
+                    onChange={(e) => setNewBenchmarkObjectDesc(e.target.value)}
+                    placeholder="请输入基准对象描述"
+                    autoSize={{ minRows: 2, maxRows: 4 }}
+                  />
+                </Form.Item>
+              </Col>
             </Row>
           </Form>
         </Modal>
@@ -3130,9 +3311,9 @@ const PriceSchemeManagementV2: React.FC = () => {
           open={manageOrgModalVisible}
           onCancel={() => setManageOrgModalVisible(false)}
           onOk={() => setManageOrgModalVisible(false)}
-          width={600}
+          width={800}
         >
-          <div style={{ padding: '16px 0' }}>
+          <div style={{ padding: '12px 0' }}>
             <Alert
               message="管理组织说明"
               description="管理组织拥有此方案的完全编辑权限，包括添加、修改、删除等所有操作。一个方案只能有一个管理组织。"
@@ -3140,23 +3321,87 @@ const PriceSchemeManagementV2: React.FC = () => {
               showIcon
               style={{ marginBottom: '16px' }}
             />
-            <Radio.Group
-              value={manageOrg}
-              onChange={(e) => setManageOrg(e.target.value)}
-              style={{ width: '100%' }}
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {mockOrganizations.map(org => (
-                  <RenderOrganizationOptions
-                    key={org.value}
-                    organization={org}
-                    level={0}
-                    selectedValue={manageOrg}
-                    onChange={setManageOrg}
-                  />
-                ))}
-              </div>
-            </Radio.Group>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center' }}>
+              <Input
+                allowClear
+                placeholder="搜索：名称 / 编码"
+                style={{ width: 260 }}
+                value={manageOrgSearch}
+                onChange={(e) => setManageOrgSearch(e.target.value)}
+              />
+              <Select
+                allowClear
+                placeholder="组织类型"
+                style={{ width: 160 }}
+                value={manageOrgCategory}
+                onChange={(value) => setManageOrgCategory(value || undefined)}
+                options={organizationCategories.map(cat => ({ label: cat, value: cat }))}
+              />
+            </div>
+            <Table
+              rowKey="value"
+              columns={organizationColumns}
+              dataSource={manageOrgData}
+              size="middle"
+              pagination={{ pageSize: 10, showSizeChanger: false }}
+              rowSelection={manageOrgRowSelection}
+              onRow={(record) => ({
+                onClick: () => setManageOrg(record.value)
+              })}
+            />
+          </div>
+        </Modal>
+
+        <Modal
+          title="选择使用组织"
+          open={applyOrgModalVisible}
+          onCancel={() => setApplyOrgModalVisible(false)}
+          onOk={() => {
+            form.setFieldValue('applyOrgs', applyOrgDraft);
+            setApplyOrgModalVisible(false);
+          }}
+          width={800}
+        >
+          <div style={{ padding: '12px 0' }}>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center' }}>
+              <Input
+                allowClear
+                placeholder="搜索：名称 / 编码"
+                style={{ width: 260 }}
+                value={applyOrgSearch}
+                onChange={(e) => setApplyOrgSearch(e.target.value)}
+              />
+              <Select
+                allowClear
+                placeholder="组织类型"
+                style={{ width: 160 }}
+                value={applyOrgCategory}
+                onChange={(value) => setApplyOrgCategory(value || undefined)}
+                options={organizationCategories.map(cat => ({ label: cat, value: cat }))}
+              />
+            </div>
+            <Table
+              rowKey="value"
+              columns={organizationColumns}
+              dataSource={applyOrgData}
+              size="middle"
+              pagination={{ pageSize: 10, showSizeChanger: false }}
+              rowSelection={applyOrgRowSelection}
+              onRow={(record) => ({
+                onClick: () => {
+                  setApplyOrgDraft(prev => {
+                    const exists = prev.includes(record.value);
+                    if (exists) {
+                      return prev.filter(item => item !== record.value);
+                    }
+                    return [...prev, record.value];
+                  });
+                }
+              })}
+            />
+            <div style={{ marginTop: 12, fontSize: 12, color: '#8c8c8c' }}>
+              已选择 {applyOrgDraft.length} 个组织
+            </div>
           </div>
         </Modal>
 

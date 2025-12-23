@@ -2,10 +2,9 @@ import React, { useState, useCallback } from 'react';
 import {
   Card,
   Button,
-  Drawer,
-  Divider,
   Switch,
   Radio,
+  Tabs,
   Select,
   Table,
   Tree,
@@ -41,7 +40,6 @@ import '@antv/s2-react/dist/s2-react.min.css';
 
 const { Title, Text } = Typography;
 const { Search } = Input;
-const { Option } = Select;
 
 // 报表分组接口
 interface ReportGroup {
@@ -77,16 +75,19 @@ interface MonitorTaskItem {
   lastCheck: string;
 }
 
-type TotalScope = 'all_filtered' | 'current_page' | 'selected';
-type AggType = 'sum' | 'avg' | 'count';
+type TotalRowPosition = 'top' | 'bottom';
+type TotalColPosition = 'left' | 'right';
 
-type TotalMetricKey = 'unitPrice' | 'basePrice' | 'groupPrice' | 'diffRate';
+type TotalMetricAgg = 'sum' | 'avg' | 'max' | 'min' | 'count';
 
-interface TotalMetricSetting {
-  key: TotalMetricKey;
+type FieldArea = 'rows' | 'columns' | 'metrics';
+
+interface ReportFieldSettingItem {
+  key: string;
   label: string;
+  group?: string;
+  area: FieldArea;
   enabled: boolean;
-  agg: AggType;
 }
 
 const ReportCenter: React.FC = () => {
@@ -652,110 +653,104 @@ const ReportCenter: React.FC = () => {
     navigate(`/monitoring-management?reportId=${report.id}&reportName=${reportName}&schemeId=${report.schemeId}`);
   };
 
+  const handleCreateMonitorTaskV2 = (report: ReportItem) => {
+    const reportName = encodeURIComponent(report.name);
+    navigate(`/monitoring-task-create-v2?reportId=${report.id}&reportName=${reportName}&schemeId=${report.schemeId}`);
+  };
+
   const handleCopyShareLink = () => {
     navigator.clipboard.writeText(shareLink);
     message.success('分享链接已复制到剪贴板');
   };
 
-  const [totalDrawerOpen, setTotalDrawerOpen] = useState(false);
-  const [showGrandTotal, setShowGrandTotal] = useState(true);
-  const [showSubTotal, setShowSubTotal] = useState(false);
-  const [totalScope, setTotalScope] = useState<TotalScope>('all_filtered');
-  const [subTotalGroupBy, setSubTotalGroupBy] = useState<'skuCode' | 'supplierName'>('supplierName');
-  const [totalMetricSettings, setTotalMetricSettings] = useState<TotalMetricSetting[]>([
-    { key: 'unitPrice', label: '供应商价格', enabled: true, agg: 'sum' },
-    { key: 'basePrice', label: '基准价格', enabled: true, agg: 'sum' },
-    { key: 'groupPrice', label: '集团价格', enabled: true, agg: 'sum' },
-    { key: 'diffRate', label: '差异率', enabled: false, agg: 'avg' }
+  const [reportSettingsOpen, setReportSettingsOpen] = useState(false);
+  const [reportSettingsTab, setReportSettingsTab] = useState<'fields' | 'totals'>('fields');
+
+  const [rowTotalEnabled, setRowTotalEnabled] = useState(true);
+  const [rowTotalPosition, setRowTotalPosition] = useState<TotalRowPosition>('bottom');
+  const [colTotalEnabled, setColTotalEnabled] = useState(false);
+  const [colTotalPosition, setColTotalPosition] = useState<TotalColPosition>('right');
+
+  const [totalMetricSettings, setTotalMetricSettings] = useState<
+    { key: string; label: string; enabled: boolean; agg: TotalMetricAgg }[]
+  >([
+    { key: 'supplierPrice', label: '供应商价格', enabled: true, agg: 'avg' },
+    { key: 'basePrice', label: '基准价格', enabled: true, agg: 'avg' },
+    { key: 'groupPrice', label: '集团价格', enabled: true, agg: 'avg' },
+    { key: 'diffRate', label: '差异率', enabled: true, agg: 'avg' }
   ]);
 
-  const [selectedPreviewRowKeys, setSelectedPreviewRowKeys] = useState<React.Key[]>([]);
-  const [previewPage, setPreviewPage] = useState(1);
-  const [previewPageSize, setPreviewPageSize] = useState(5);
+  const defaultFieldSettings: ReportFieldSettingItem[] = [
+    { key: 'row_productName', label: '产品名称', group: '产品信息', area: 'rows', enabled: true },
+    { key: 'row_brand', label: '品牌', group: '产品信息', area: 'rows', enabled: true },
+    { key: 'row_skuCode', label: 'SKU', group: '产品信息', area: 'rows', enabled: true },
+    { key: 'row_supplierName', label: '供应商', group: '供应商信息', area: 'rows', enabled: true },
+    { key: 'col_org', label: '组织名称', group: '组织', area: 'columns', enabled: true },
+    { key: 'col_time', label: '采购日期', group: '时间', area: 'columns', enabled: true },
+    { key: 'metric_unitPrice', label: '供应商价格', group: '价格', area: 'metrics', enabled: true },
+    { key: 'metric_basePrice', label: '基准价格', group: '价格', area: 'metrics', enabled: true },
+    { key: 'metric_groupPrice', label: '集团价格', group: '价格', area: 'metrics', enabled: true },
+    { key: 'metric_diffRate', label: '差异率', group: '差异', area: 'metrics', enabled: true }
+  ];
 
-  const previewBaseRows = monitoringPreviewData;
-
-  const computeAggValue = (rows: typeof previewBaseRows, field: TotalMetricKey, agg: AggType) => {
-    if (agg === 'count') return rows.length;
-    const nums = rows
-      .map((r: any) => Number(r[field]))
-      .filter((v) => Number.isFinite(v));
-
-    if (nums.length === 0) return 0;
-    if (agg === 'sum') return nums.reduce((a, b) => a + b, 0);
-    return nums.reduce((a, b) => a + b, 0) / nums.length;
-  };
-
-  const getScopeRows = () => {
-    if (totalScope === 'selected') {
-      const keySet = new Set(selectedPreviewRowKeys);
-      return previewBaseRows.filter((r: any) => keySet.has(r.productCode));
-    }
-    if (totalScope === 'current_page') {
-      const start = (previewPage - 1) * previewPageSize;
-      return previewBaseRows.slice(start, start + previewPageSize);
-    }
-    return previewBaseRows;
-  };
-
-  const renderMetricValue = (field: TotalMetricKey, value: number, agg: AggType) => {
-    if (agg === 'count') return value;
-    if (field === 'diffRate') return `${Number(value).toFixed(2)}%`;
-    return `¥${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-  };
-
-  const buildSubtotalRows = () => {
-    if (!showSubTotal) return previewBaseRows;
-
-    const grouped = new Map<string, typeof previewBaseRows>();
-    for (const row of previewBaseRows as any[]) {
-      const k = String(row[subTotalGroupBy] ?? '-');
-      const prev = grouped.get(k) ?? [];
-      prev.push(row);
-      grouped.set(k, prev);
-    }
-
-    const merged: any[] = [];
-    for (const [k, rows] of grouped.entries()) {
-      merged.push(...rows);
-
-      const subtotalRow: any = {
-        __rowType: 'subtotal',
-        productCode: `__subtotal__${subTotalGroupBy}__${k}`,
-        skuCode: '',
-        supplierName: '',
-        productName: '',
-        brand: '',
-        productSpec: '',
-        supplierCode: '',
-        supplierType: '',
-        baseSupplier: '',
-        baseProductCode: '',
-        baseSpec: '',
-        groupSupplier: '',
-        groupProductCode: '',
-        groupSpec: ''
-      };
-
-      subtotalRow[subTotalGroupBy] = `小计（${k}）`;
-
-      for (const m of totalMetricSettings) {
-        if (!m.enabled) continue;
-        subtotalRow[m.key] = computeAggValue(rows, m.key, m.agg);
-      }
-
-      merged.push(subtotalRow);
-    }
-    return merged;
-  };
+  const [fieldSettings, setFieldSettings] = useState<ReportFieldSettingItem[]>(defaultFieldSettings);
 
   // 渲染右侧内容
   const renderRightContent = () => {
     if (selectedReport) {
       const relatedMonitorTasks = monitorTasks.filter(t => t.reportId === selectedReport.id);
-      const previewRowsWithSubTotal = buildSubtotalRows();
-      const scopeRows = getScopeRows();
-      const enabledMetrics = totalMetricSettings.filter(m => m.enabled);
+
+      const monitorActionsMenu = {
+        items: [
+          {
+            key: 'add',
+            label: '添加监控任务'
+          },
+          {
+            key: 'add_v2',
+            label: '添加监控任务（新版）'
+          },
+          {
+            key: 'view',
+            label: '查看监控任务'
+          }
+        ],
+        onClick: ({ key }: { key: string }) => {
+          if (key === 'add') {
+            handleCreateMonitorTask(selectedReport);
+          }
+          if (key === 'add_v2') {
+            handleCreateMonitorTaskV2(selectedReport);
+          }
+          if (key === 'view') {
+            const sourceReportName = encodeURIComponent(selectedReport.name);
+            navigate(`/monitoring-management?entry=report&sourceReportId=${selectedReport.id}&sourceReportName=${sourceReportName}`);
+          }
+        }
+      };
+
+      const reportMoreMenu = {
+        items: [
+          {
+            key: 'edit',
+            label: '编辑',
+            icon: <EditOutlined />
+          },
+          {
+            key: 'share',
+            label: '分享',
+            icon: <ShareAltOutlined />
+          }
+        ],
+        onClick: ({ key }: { key: string }) => {
+          if (key === 'edit') {
+            handleEditReport(selectedReport);
+          }
+          if (key === 'share') {
+            handleShareReport(selectedReport);
+          }
+        }
+      };
 
       return (
         <div className="h-full flex flex-col">
@@ -768,46 +763,32 @@ const ReportCenter: React.FC = () => {
                 <Text type="secondary">状态：{selectedReport.status === 'PUBLISHED' ? '已发布' : '草稿'}</Text>
               </Space>
             </div>
-            <Space>
-              <Button
-                icon={<EditOutlined />}
-                onClick={() => handleEditReport(selectedReport)}
-              >
-                编辑
-              </Button>
-              <Button
-                icon={<ShareAltOutlined />}
-                onClick={() => handleShareReport(selectedReport)}
-              >
-                分享
-              </Button>
-            </Space>
           </div>
 
           <div className="flex-1 bg-gray-50 rounded-lg overflow-auto">
             <Card size="small" style={{ marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <Button size="small">筛选设置</Button>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setReportSettingsTab('fields');
+                      setReportSettingsOpen(true);
+                    }}
+                  >
+                    报表设置
+                  </Button>
                   <Button size="small">导出</Button>
-                  <Button size="small" onClick={() => setTotalDrawerOpen(true)}>汇总设置</Button>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Button
-                    size="small"
-                    onClick={() => setMonitorTaskModalVisible(true)}
-                    disabled={relatedMonitorTasks.length === 0}
-                  >
-                    查看监控任务
-                  </Button>
-                  <Button
-                    size="small"
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => handleCreateMonitorTask(selectedReport)}
-                  >
-                    创建监控任务
-                  </Button>
+                  <Dropdown menu={monitorActionsMenu} trigger={['hover', 'click']}>
+                    <Button size="small" type="primary">
+                      关联监控任务
+                    </Button>
+                  </Dropdown>
+                  <Dropdown menu={reportMoreMenu} trigger={['hover', 'click']}>
+                    <Button size="small" icon={<MoreOutlined />}>
+                      更多
+                    </Button>
+                  </Dropdown>
                 </div>
               </div>
             </Card>
@@ -829,145 +810,6 @@ const ReportCenter: React.FC = () => {
                   sheetType="pivot"
                 />
               </div>
-            </Card>
-
-            <Card title="汇总预览（原型）" style={{ marginTop: 16 }}>
-              <Table
-                size="small"
-                rowKey={(r: any) => r.productCode}
-                dataSource={previewRowsWithSubTotal as any[]}
-                pagination={{
-                  current: previewPage,
-                  pageSize: previewPageSize,
-                  total: previewBaseRows.length,
-                  showSizeChanger: true
-                }}
-                onChange={(pagination) => {
-                  setPreviewPage(pagination.current || 1);
-                  setPreviewPageSize(pagination.pageSize || 5);
-                }}
-                rowSelection={{
-                  selectedRowKeys: selectedPreviewRowKeys,
-                  onChange: (keys) => setSelectedPreviewRowKeys(keys),
-                  getCheckboxProps: (record: any) => ({
-                    disabled: record.__rowType === 'subtotal'
-                  })
-                }}
-                rowClassName={(record: any) => (record.__rowType === 'subtotal' ? 'bg-gray-50 font-medium' : '')}
-                columns={[
-                  {
-                    title: 'SKU',
-                    dataIndex: 'skuCode',
-                    width: 90,
-                    render: (v: any, record: any) => (record.__rowType === 'subtotal' ? '' : v)
-                  },
-                  {
-                    title: '供应商',
-                    dataIndex: 'supplierName',
-                    width: 220,
-                    render: (v: any) => v
-                  },
-                  {
-                    title: '供应商SKU',
-                    dataIndex: 'productCode',
-                    width: 110,
-                    render: (v: any, record: any) => (record.__rowType === 'subtotal' ? '' : v)
-                  },
-                  {
-                    title: '供应商价格',
-                    dataIndex: 'unitPrice',
-                    align: 'right' as const,
-                    width: 120,
-                    render: (v: any, record: any) => {
-                      const n = Number(v);
-                      if (!Number.isFinite(n)) return '-';
-                      return record.__rowType === 'subtotal'
-                        ? renderMetricValue('unitPrice', n, totalMetricSettings.find(m => m.key === 'unitPrice')?.agg || 'sum')
-                        : `¥${n.toLocaleString()}`;
-                    }
-                  },
-                  {
-                    title: '基准价格',
-                    dataIndex: 'basePrice',
-                    align: 'right' as const,
-                    width: 120,
-                    render: (v: any, record: any) => {
-                      const n = Number(v);
-                      if (!Number.isFinite(n)) return '-';
-                      return record.__rowType === 'subtotal'
-                        ? renderMetricValue('basePrice', n, totalMetricSettings.find(m => m.key === 'basePrice')?.agg || 'sum')
-                        : `¥${n.toLocaleString()}`;
-                    }
-                  },
-                  {
-                    title: '集团价格',
-                    dataIndex: 'groupPrice',
-                    align: 'right' as const,
-                    width: 120,
-                    render: (v: any, record: any) => {
-                      const n = Number(v);
-                      if (!Number.isFinite(n)) return '-';
-                      return record.__rowType === 'subtotal'
-                        ? renderMetricValue('groupPrice', n, totalMetricSettings.find(m => m.key === 'groupPrice')?.agg || 'sum')
-                        : `¥${n.toLocaleString()}`;
-                    }
-                  },
-                  {
-                    title: '差异率',
-                    dataIndex: 'diffRate',
-                    align: 'right' as const,
-                    width: 100,
-                    render: (v: any, record: any) => {
-                      const n = Number(v);
-                      if (!Number.isFinite(n) || n === 0) return record.__rowType === 'subtotal' ? '0.00%' : '-';
-                      return record.__rowType === 'subtotal' ? `${n.toFixed(2)}%` : `${n.toFixed(2)}%`;
-                    }
-                  }
-                ]}
-                summary={() => {
-                  if (!showGrandTotal || enabledMetrics.length === 0) return null;
-
-                  const metricToValue = new Map<TotalMetricKey, { value: number; agg: AggType }>();
-                  for (const m of enabledMetrics) {
-                    metricToValue.set(m.key, { value: computeAggValue(scopeRows as any, m.key, m.agg), agg: m.agg });
-                  }
-
-                  return (
-                    <Table.Summary fixed>
-                      <Table.Summary.Row>
-                        <Table.Summary.Cell index={0} colSpan={3}>
-                          <span style={{ fontWeight: 600 }}>总计</span>
-                          <span style={{ color: '#8c8c8c', marginLeft: 8 }}>
-                            {totalScope === 'all_filtered' && '（按当前筛选全量）'}
-                            {totalScope === 'current_page' && '（仅当前页）'}
-                            {totalScope === 'selected' && `（勾选 ${selectedPreviewRowKeys.length} 行）`}
-                          </span>
-                        </Table.Summary.Cell>
-                        <Table.Summary.Cell index={3} align="right">
-                          {metricToValue.has('unitPrice')
-                            ? renderMetricValue('unitPrice', metricToValue.get('unitPrice')!.value, metricToValue.get('unitPrice')!.agg)
-                            : '-'}
-                        </Table.Summary.Cell>
-                        <Table.Summary.Cell index={4} align="right">
-                          {metricToValue.has('basePrice')
-                            ? renderMetricValue('basePrice', metricToValue.get('basePrice')!.value, metricToValue.get('basePrice')!.agg)
-                            : '-'}
-                        </Table.Summary.Cell>
-                        <Table.Summary.Cell index={5} align="right">
-                          {metricToValue.has('groupPrice')
-                            ? renderMetricValue('groupPrice', metricToValue.get('groupPrice')!.value, metricToValue.get('groupPrice')!.agg)
-                            : '-'}
-                        </Table.Summary.Cell>
-                        <Table.Summary.Cell index={6} align="right">
-                          {metricToValue.has('diffRate')
-                            ? renderMetricValue('diffRate', metricToValue.get('diffRate')!.value, metricToValue.get('diffRate')!.agg)
-                            : '-'}
-                        </Table.Summary.Cell>
-                      </Table.Summary.Row>
-                    </Table.Summary>
-                  );
-                }}
-              />
             </Card>
 
             <Modal
@@ -1017,9 +859,16 @@ const ReportCenter: React.FC = () => {
                       title: '操作',
                       key: 'actions',
                       width: 160,
-                      render: () => (
+                      render: (_: any, record: any) => (
                         <Space>
-                          <Button size="small" onClick={() => message.info('查看任务详情：待接入')}>
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              const sourceReportName = encodeURIComponent(selectedReport.name);
+                              navigate(`/monitoring-management?entry=report&sourceReportId=${selectedReport.id}&sourceReportName=${sourceReportName}`);
+                              setMonitorTaskModalVisible(false);
+                            }}
+                          >
                             查看
                           </Button>
                         </Space>
@@ -1033,100 +882,242 @@ const ReportCenter: React.FC = () => {
             </Modal>
           </div>
 
-          <Drawer
-            title="汇总设置（原型）"
-            open={totalDrawerOpen}
-            onClose={() => setTotalDrawerOpen(false)}
-            width={520}
+          <Modal
+            title="报表设置"
+            open={reportSettingsOpen}
+            width={980}
+            onCancel={() => setReportSettingsOpen(false)}
+            onOk={() => setReportSettingsOpen(false)}
+            okText="保存"
+            cancelText="关闭"
+            destroyOnClose
           >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text>显示总计行</Text>
-                <Switch checked={showGrandTotal} onChange={setShowGrandTotal} />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text>显示小计行</Text>
-                <Switch checked={showSubTotal} onChange={setShowSubTotal} />
-              </div>
-
-              <div>
-                <Text>汇总范围</Text>
-                <div style={{ marginTop: 8 }}>
-                  <Radio.Group
-                    value={totalScope}
-                    onChange={(e) => setTotalScope(e.target.value)}
-                    optionType="button"
-                    buttonStyle="solid"
-                  >
-                    <Radio.Button value="all_filtered">全量（按筛选）</Radio.Button>
-                    <Radio.Button value="current_page">当前页</Radio.Button>
-                    <Radio.Button value="selected">勾选行</Radio.Button>
-                  </Radio.Group>
-                </div>
-              </div>
-
-              <div>
-                <Text>小计分组维度</Text>
-                <div style={{ marginTop: 8 }}>
-                  <Select
-                    value={subTotalGroupBy}
-                    onChange={setSubTotalGroupBy}
-                    disabled={!showSubTotal}
-                    style={{ width: '100%' }}
-                  >
-                    <Option value="supplierName">供应商</Option>
-                    <Option value="skuCode">SKU</Option>
-                  </Select>
-                </div>
-              </div>
-
-              <Divider style={{ margin: '8px 0' }} />
-
-              <div>
-                <Text>汇总指标</Text>
-                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {totalMetricSettings.map((m) => (
-                    <div
-                      key={m.key}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 160px',
-                        gap: 12,
-                        alignItems: 'center'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                        <span>{m.label}</span>
-                        <Switch
-                          checked={m.enabled}
-                          onChange={(checked) => {
-                            setTotalMetricSettings((prev) =>
-                              prev.map((x) => (x.key === m.key ? { ...x, enabled: checked } : x))
-                            );
-                          }}
-                        />
-                      </div>
-
-                      <Select
-                        value={m.agg}
-                        disabled={!m.enabled}
-                        onChange={(agg) => {
-                          setTotalMetricSettings((prev) =>
-                            prev.map((x) => (x.key === m.key ? { ...x, agg } : x))
-                          );
+            <Tabs
+              activeKey={reportSettingsTab}
+              onChange={(k) => setReportSettingsTab(k as any)}
+              items={[
+                {
+                  key: 'fields',
+                  label: '字段',
+                  children: (
+                    <div style={{ display: 'flex', gap: 16 }}>
+                      {([
+                        { title: '行字段显示设置', area: 'rows' as const },
+                        { title: '列字段显示设置', area: 'columns' as const },
+                        { title: '指标字段显示设置', area: 'metrics' as const }
+                      ] as const).map((block) => {
+                        const data = fieldSettings.filter((f) => f.area === block.area);
+                        return (
+                          <div
+                            key={block.area}
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              border: '1px solid #f0f0f0',
+                              borderRadius: 8,
+                              background: '#fff',
+                              overflow: 'hidden'
+                            }}
+                          >
+                            <div
+                              style={{
+                                padding: '10px 12px',
+                                borderBottom: '1px solid #f0f0f0',
+                                background: '#fafafa'
+                              }}
+                            >
+                              <Text strong>{block.title}</Text>
+                            </div>
+                            <div style={{ padding: 12 }}>
+                              <Table
+                                size="small"
+                                rowKey={(r) => r.key}
+                                dataSource={data}
+                                pagination={false}
+                                scroll={{ y: 360 }}
+                                columns={[
+                                  {
+                                    title: '字段分组',
+                                    dataIndex: 'group',
+                                    key: 'group',
+                                    width: 120,
+                                    render: (v: string) => <Text type="secondary">{v || '-'}</Text>
+                                  },
+                                  {
+                                    title: '字段',
+                                    dataIndex: 'label',
+                                    key: 'label',
+                                    render: (v: string) => <Text>{v}</Text>
+                                  },
+                                  {
+                                    title: '显示',
+                                    dataIndex: 'enabled',
+                                    key: 'enabled',
+                                    width: 80,
+                                    align: 'right' as const,
+                                    render: (_: any, record: ReportFieldSettingItem) => (
+                                      <Switch
+                                        size="small"
+                                        checked={record.enabled}
+                                        onChange={(checked) => {
+                                          setFieldSettings((prev) =>
+                                            prev.map((x) => (x.key === record.key ? { ...x, enabled: checked } : x))
+                                          );
+                                        }}
+                                      />
+                                    )
+                                  }
+                                ]}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                },
+                {
+                  key: 'totals',
+                  label: '汇总',
+                  children: (
+                    <div style={{ paddingTop: 8 }}>
+                      <div
+                        style={{
+                          border: '1px solid #f0f0f0',
+                          borderRadius: 8,
+                          padding: '16px',
+                          background: '#fafafa'
                         }}
                       >
-                        <Option value="sum">合计</Option>
-                        <Option value="avg">平均</Option>
-                        <Option value="count">计数</Option>
-                      </Select>
+                        <div style={{ marginBottom: 16 }}>
+                          <Text strong style={{ fontSize: 14 }}>总计行列配置</Text>
+                        </div>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '12px 0'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                            <Text style={{ width: 72 }}>行总计</Text>
+                            <Radio.Group
+                              value={rowTotalPosition}
+                              onChange={(e) => setRowTotalPosition(e.target.value)}
+                              disabled={!rowTotalEnabled}
+                            >
+                              <Radio value="top">上</Radio>
+                              <Radio value="bottom">下</Radio>
+                            </Radio.Group>
+                          </div>
+                          <Switch checked={rowTotalEnabled} onChange={setRowTotalEnabled} />
+                        </div>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '12px 0'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                            <Text style={{ width: 72 }}>列总计</Text>
+                            <Radio.Group
+                              value={colTotalPosition}
+                              onChange={(e) => setColTotalPosition(e.target.value)}
+                              disabled={!colTotalEnabled}
+                            >
+                              <Radio value="left">左</Radio>
+                              <Radio value="right">右</Radio>
+                            </Radio.Group>
+                          </div>
+                          <Switch checked={colTotalEnabled} onChange={setColTotalEnabled} />
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: 16 }}>
+                        <div
+                          style={{
+                            border: '1px solid #f0f0f0',
+                            borderRadius: 8,
+                            padding: '16px',
+                            background: '#fafafa'
+                          }}
+                        >
+                          <div style={{ marginBottom: 12, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                            <Text strong style={{ fontSize: 14 }}>总计指标配置</Text>
+                            <Text type="secondary" style={{ fontSize: 12 }}>配置每个指标的总计计算方式</Text>
+                          </div>
+
+                          <Table
+                            size="small"
+                            bordered
+                            rowKey={(r) => r.key}
+                            pagination={false}
+                            dataSource={totalMetricSettings}
+                            columns={[
+                              {
+                                title: '指标',
+                                dataIndex: 'label',
+                                key: 'label'
+                              },
+                              {
+                                title: '启用',
+                                dataIndex: 'enabled',
+                                key: 'enabled',
+                                width: 110,
+                                align: 'center' as const,
+                                render: (_: any, record: any) => (
+                                  <Switch
+                                    size="small"
+                                    checked={record.enabled}
+                                    onChange={(checked) => {
+                                      setTotalMetricSettings((prev) =>
+                                        prev.map((x) => (x.key === record.key ? { ...x, enabled: checked } : x))
+                                      );
+                                    }}
+                                  />
+                                )
+                              },
+                              {
+                                title: '计算方式',
+                                dataIndex: 'agg',
+                                key: 'agg',
+                                width: 200,
+                                render: (_: any, record: any) => (
+                                  <Select
+                                    size="small"
+                                    value={record.agg}
+                                    style={{ width: 160 }}
+                                    disabled={!record.enabled}
+                                    options={[
+                                      { label: '求和', value: 'sum' },
+                                      { label: '平均', value: 'avg' },
+                                      { label: '最大', value: 'max' },
+                                      { label: '最小', value: 'min' },
+                                      { label: '计数', value: 'count' }
+                                    ]}
+                                    onChange={(agg) => {
+                                      setTotalMetricSettings((prev) =>
+                                        prev.map((x) => (x.key === record.key ? { ...x, agg } : x))
+                                      );
+                                    }}
+                                  />
+                                )
+                              }
+                            ]}
+                          />
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Drawer>
+                  )
+                }
+              ]}
+            />
+          </Modal>
         </div>
       );
     }

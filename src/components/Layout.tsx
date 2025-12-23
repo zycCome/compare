@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Layout as AntLayout, Menu, Button, Tooltip, Divider } from 'antd';
+import { Layout as AntLayout, Menu, Button, Tooltip } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { navItems } from '../nav-items';
 
@@ -16,6 +16,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   // 按分组组织菜单项
   const groupedNavItems = navItems.reduce((acc, item) => {
+    if (item.hidden) {
+      return acc;
+    }
     const group = item.group || '一期';
     if (!acc[group]) {
       acc[group] = [];
@@ -33,7 +36,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, {} as Record<string, Array<any>>);
 
   // 生成分组的菜单项
-  const menuItems = [];
+  const menuItems: any[] = [];
   const groups = ['二期', '一期'];
 
   groups.forEach((group, index) => {

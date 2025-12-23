@@ -15,7 +15,6 @@ import {
   Table,
   Statistic,
   Badge,
-  Tabs,
   Radio,
   Tree,
   Switch,
@@ -24,6 +23,7 @@ import {
 } from 'antd';
 import {
   EyeOutlined,
+  EditOutlined,
   DeleteOutlined,
   WarningOutlined,
   CheckCircleOutlined,
@@ -36,12 +36,11 @@ import {
   Target,
   Activity
 } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { SheetComponent } from '@antv/s2-react';
 import '@antv/s2-react/dist/s2-react.min.css';
-import { Cron } from 'react-js-cron';
-import 'react-js-cron/dist/styles.css';
 import QueryConditionsPanel, { QueryCondition, FieldMetadata } from '../components/QueryConditionsPanel';
+import CronExpressionEditor from '../components/CronExpressionEditor';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -51,6 +50,8 @@ interface MonitorTask {
   id: string;
   name: string;
   description: string;
+  sourceReportId?: string;
+  sourceReportName?: string;
   schemeId: string;
   schemeName: string;
   dimensions: string[];
@@ -105,21 +106,28 @@ interface LayoutDroppedItem {
 
 const MonitoringManagement: React.FC = () => {
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState('tasks');
+  const navigate = useNavigate();
   const [listView, setListView] = useState<'tasks' | 'alerts'>('tasks');
-  const [adminListView, setAdminListView] = useState<'tasks' | 'alerts'>('tasks');
   const [viewMode, setViewMode] = useState<'list' | 'create' | 'preview'>('list');
+  const [taskPageMode, setTaskPageMode] = useState<'create' | 'edit' | 'view'>('create');
   const [monitorConditions, setMonitorConditions] = useState<QueryCondition[]>([]);
   const [droppedItems, setDroppedItems] = useState<LayoutDroppedItem[]>([]);
   const [draggedItem, setDraggedItem] = useState<ReportFieldItem | null>(null);
   const [form] = Form.useForm();
   const [expandedKeys, setExpandedKeys] = useState<string[]>(['dimension', 'metric', 'calculated', 'baseline']);
-  const [activeInputField, setActiveInputField] = useState<'alertTitle' | 'alertContent' | 'noAlertTitle' | 'noAlertContent' | null>(null);
+  const [activeInputField, setActiveInputField] = useState<'alertTitle' | 'alertContent' | null>(null);
   const [alertDetail, setAlertDetail] = useState<AlertRecord | null>(null);
   const [alertDetailVisible, setAlertDetailVisible] = useState(false);
   const [notificationDetailRecord, setNotificationDetailRecord] = useState<AlertRecord | null>(null);
   const [notificationDetailVisible, setNotificationDetailVisible] = useState(false);
-  const [cronValue, setCronValue] = useState('0 10 * * *');
+  const [cronValue, setCronValue] = useState('0 0 10 * * ? *');
+
+  const [filterTaskName, setFilterTaskName] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<'enabled' | 'disabled' | undefined>(undefined);
+  const [filterSourceReportId, setFilterSourceReportId] = useState<string | undefined>(undefined);
+  const [filterSourceReportName, setFilterSourceReportName] = useState<string | undefined>(undefined);
+  const [filterSchemeIds, setFilterSchemeIds] = useState<string[]>([]);
+  const [schemeFilterVisible, setSchemeFilterVisible] = useState(false);
 
   const reportContext = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -129,19 +137,42 @@ const MonitoringManagement: React.FC = () => {
     return { reportId, reportName, schemeId };
   }, [location.search]);
 
-  const currentUser = '张三';
-
   useEffect(() => {
     if (reportContext.reportId) {
       setViewMode('create');
+      setTaskPageMode('create');
       form.setFieldsValue({
         taskName: `【${reportContext.reportName || '报表'}】监控任务`,
         sourceReportId: reportContext.reportId,
         sourceReportName: reportContext.reportName || reportContext.reportId,
         schemeId: reportContext.schemeId || undefined
       });
+      return;
     }
-  }, [form, reportContext.reportId, reportContext.reportName, reportContext.schemeId]);
+
+    const params = new URLSearchParams(location.search);
+    const entry = params.get('entry') || '';
+    const schemeId = params.get('schemeId') || '';
+    if (entry === 'create') {
+      setViewMode('create');
+      setTaskPageMode('create');
+      if (schemeId) {
+        form.setFieldsValue({ schemeId });
+      }
+    }
+  }, [form, location.search, reportContext.reportId, reportContext.reportName, reportContext.schemeId]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const sourceReportId = params.get('sourceReportId') || '';
+    const sourceReportName = params.get('sourceReportName') ? decodeURIComponent(params.get('sourceReportName') as string) : '';
+    if (sourceReportId) {
+      setViewMode('list');
+      setListView('tasks');
+      setFilterSourceReportId(sourceReportId);
+      setFilterSourceReportName(sourceReportName || sourceReportId);
+    }
+  }, [location.search]);
 
   // 可用模板变量
   const templateVariables = [
@@ -161,12 +192,6 @@ const MonitoringManagement: React.FC = () => {
     } else if (activeInputField === 'alertContent') {
       const current = form.getFieldValue('alertNotificationDescription') || '';
       form.setFieldValue('alertNotificationDescription', current + varText);
-    } else if (activeInputField === 'noAlertTitle') {
-      const current = form.getFieldValue('noAlertNotificationTitle') || '';
-      form.setFieldValue('noAlertNotificationTitle', current + varText);
-    } else if (activeInputField === 'noAlertContent') {
-      const current = form.getFieldValue('noAlertNotificationDescription') || '';
-      form.setFieldValue('noAlertNotificationDescription', current + varText);
     } else {
       message.info('请先点击消息标题或消息内容输入框');
     }
@@ -194,8 +219,19 @@ const MonitoringManagement: React.FC = () => {
 
   const handleTestNotification = async () => {
     try {
+      const receivers = form.getFieldValue('notificationReceivers') || [];
+      const receiverGroups = form.getFieldValue('notificationReceiverGroups') || [];
+      const hasReceivers =
+        (Array.isArray(receivers) && receivers.length > 0) ||
+        (Array.isArray(receiverGroups) && receiverGroups.length > 0);
+      if (!hasReceivers) {
+        message.info('请先选择接收用户/接收用户组后再测试发送');
+        return;
+      }
+
       await form.validateFields([
         'notificationReceivers',
+        'notificationReceiverGroups',
         'notificationChannels',
         'alertNotificationTitle',
         'alertNotificationDescription'
@@ -211,6 +247,8 @@ const MonitoringManagement: React.FC = () => {
       id: '1',
       name: 'CPU价格异常监控',
       description: '监控CPU产品价格波动，超过15%上涨时预警',
+      sourceReportId: 'report_001',
+      sourceReportName: 'CPU价格趋势分析报表',
       schemeId: 'scheme-001',
       schemeName: 'Q3 CPU价格回顾',
       dimensions: ['供应商', '物料编码', '采购日期'],
@@ -228,6 +266,8 @@ const MonitoringManagement: React.FC = () => {
       id: '2',
       name: '供应商协议价监控',
       description: '监控主要供应商协议价变化',
+      sourceReportId: 'report_002',
+      sourceReportName: '供应商协议价对比报表',
       schemeId: 'scheme-002',
       schemeName: '华东区供应商协议价分析',
       dimensions: ['供应商', '产品类别'],
@@ -245,6 +285,8 @@ const MonitoringManagement: React.FC = () => {
       id: '3',
       name: '内存条价格波动监控',
       description: '监控内存条价格波动，超过8%上涨时预警',
+      sourceReportId: 'report_001',
+      sourceReportName: 'CPU价格趋势分析报表',
       schemeId: 'scheme-003',
       schemeName: '内存条价格趋势分析',
       dimensions: ['供应商', '物料编码'],
@@ -260,7 +302,72 @@ const MonitoringManagement: React.FC = () => {
     }
   ];
 
-  const myMonitorTasks = allMonitorTasks.filter(t => t.creator === currentUser);
+  const sourceReportOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    allMonitorTasks.forEach(t => {
+      if (t.sourceReportId) {
+        map.set(t.sourceReportId, t.sourceReportName || t.sourceReportId);
+      }
+    });
+    return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
+  }, [allMonitorTasks]);
+
+  const applyTaskFilters = (tasks: MonitorTask[]) => {
+    const keyword = filterTaskName.trim().toLowerCase();
+    return tasks.filter(t => {
+      const matchName = keyword ? (t.name || '').toLowerCase().includes(keyword) : true;
+      const matchStatus =
+        filterStatus === 'enabled' ? t.enabled :
+        filterStatus === 'disabled' ? !t.enabled :
+        true;
+      const matchSourceReport = filterSourceReportId ? t.sourceReportId === filterSourceReportId : true;
+      const matchScheme = filterSchemeIds.length > 0 ? filterSchemeIds.includes(t.schemeId) : true;
+      return matchName && matchStatus && matchSourceReport && matchScheme;
+    });
+  };
+
+  const filteredAllMonitorTasks = useMemo(
+    () => applyTaskFilters(allMonitorTasks),
+    [allMonitorTasks, filterTaskName, filterStatus, filterSourceReportId, filterSchemeIds]
+  );
+
+  const handleClearFilters = () => {
+    setFilterTaskName('');
+    setFilterStatus(undefined);
+    setFilterSourceReportId(undefined);
+    setFilterSourceReportName(undefined);
+    setFilterSchemeIds([]);
+    const params = new URLSearchParams(location.search);
+    params.delete('sourceReportId');
+    params.delete('sourceReportName');
+    navigate({ pathname: location.pathname, search: params.toString() ? `?${params.toString()}` : '' }, { replace: true });
+  };
+
+  const handleViewTaskDetail = (task: MonitorTask) => {
+    setViewMode('create');
+    setTaskPageMode('view');
+    form.setFieldsValue({
+      taskName: task.name,
+      schemeId: task.schemeId,
+      severity: task.severity,
+      enabled: task.enabled,
+      sourceReportId: task.sourceReportId,
+      sourceReportName: task.sourceReportName
+    });
+  };
+
+  const handleEditTask = (task: MonitorTask) => {
+    setViewMode('create');
+    setTaskPageMode('edit');
+    form.setFieldsValue({
+      taskName: task.name,
+      schemeId: task.schemeId,
+      severity: task.severity,
+      enabled: task.enabled,
+      sourceReportId: task.sourceReportId,
+      sourceReportName: task.sourceReportName
+    });
+  };
 
   const allAlertRecords: AlertRecord[] = [
     {
@@ -358,14 +465,48 @@ const MonitoringManagement: React.FC = () => {
     }
   ];
 
-  const myAlertRecords = allAlertRecords.filter(a => a.taskCreator === currentUser);
-
   // 比价方案选项
   const schemeOptions = [
     { value: 'scheme-001', label: 'Q3 CPU价格回顾' },
     { value: 'scheme-002', label: '华东区供应商协议价分析' },
     { value: 'scheme-003', label: '内存条价格趋势分析' }
   ];
+
+  const schemeFilterSummary = useMemo(() => {
+    if (filterSchemeIds.length === 0) return '';
+    const idSet = new Set(filterSchemeIds);
+    const names = schemeOptions.filter(s => idSet.has(s.value)).map(s => s.label);
+    return names.join('、');
+  }, [filterSchemeIds]);
+
+  const reportOptionsByScheme: Record<string, Array<{ value: string; label: string }>> = {
+    'scheme-001': [
+      { value: 'report_001', label: 'CPU价格趋势分析报表' },
+      { value: 'report_003', label: 'CPU供应商价差报表' }
+    ],
+    'scheme-002': [
+      { value: 'report_002', label: '供应商协议价对比报表' },
+      { value: 'report_004', label: '协议价波动监控报表' }
+    ],
+    'scheme-003': [
+      { value: 'report_005', label: '内存条价格趋势报表' }
+    ]
+  };
+
+  const currentSchemeId = Form.useWatch('schemeId', form);
+  const currentReportOptions = useMemo(() => {
+    if (!currentSchemeId) return [];
+    return reportOptionsByScheme[currentSchemeId] || [];
+  }, [currentSchemeId]);
+
+  const isSchemeLocked = taskPageMode === 'edit' || taskPageMode === 'view' || !!reportContext.reportId;
+  const isReportLocked = taskPageMode === 'edit' || taskPageMode === 'view' || !!reportContext.reportId;
+
+  const handleSchemeChangeForCreate = (schemeId: string) => {
+    form.setFieldValue('schemeId', schemeId);
+    form.setFieldValue('sourceReportId', undefined);
+    form.setFieldValue('sourceReportName', undefined);
+  };
 
   const dimensionFields: ReportFieldItem[] = [
     { id: 'supplier', name: '供应商', type: 'dimension', description: '采购供应商主体/集团' },
@@ -591,9 +732,23 @@ const MonitoringManagement: React.FC = () => {
             <Button onClick={() => setViewMode('list')}>
               返回列表
             </Button>
+            {taskPageMode === 'view' && (
+              <Button
+                type="primary"
+                onClick={() => {
+                  setTaskPageMode('edit');
+                }}
+              >
+                编辑
+              </Button>
+            )}
             <Button
               type="primary"
               onClick={() => {
+                if (taskPageMode === 'view') {
+                  message.info('当前为只读查看模式');
+                  return;
+                }
                 const values = form.getFieldsValue();
                 if (!values.taskName) {
                   message.error('请填写任务名称');
@@ -612,7 +767,7 @@ const MonitoringManagement: React.FC = () => {
           </Space>
         </div>
 
-        <Form form={form} layout="vertical">
+        <Form form={form} layout="vertical" disabled={taskPageMode === 'view'}>
           {/* 1. 基本信息 */}
           <Card title="基本信息" style={{ marginBottom: 16 }}>
             <Row gutter={16}>
@@ -627,17 +782,6 @@ const MonitoringManagement: React.FC = () => {
               </Col>
               <Col span={8}>
                 <Form.Item
-                  name="sourceReportName"
-                  label="来源报表"
-                >
-                  <Input placeholder="请选择来源报表" disabled={!!reportContext.reportId} />
-                </Form.Item>
-                <Form.Item name="sourceReportId" hidden>
-                  <Input />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item
                   name="schemeId"
                   label="比价方案"
                   rules={[{ required: true, message: '请选择比价方案' }]}
@@ -646,7 +790,11 @@ const MonitoringManagement: React.FC = () => {
                     placeholder="选择比价方案"
                     showSearch
                     optionFilterProp="children"
-                    disabled={!!reportContext.reportId}
+                    disabled={isSchemeLocked}
+                    onChange={(val: string) => {
+                      if (isSchemeLocked) return;
+                      handleSchemeChangeForCreate(val);
+                    }}
                   >
                     {schemeOptions.map(option => (
                       <Option key={option.value} value={option.value}>
@@ -654,6 +802,27 @@ const MonitoringManagement: React.FC = () => {
                       </Option>
                     ))}
                   </Select>
+                </Form.Item>
+              </Col>
+
+              <Col span={8}>
+                <Form.Item
+                  name="sourceReportId"
+                  label="来源报表"
+                  rules={[{ required: true, message: '请选择来源报表' }]}
+                >
+                  <Select
+                    placeholder={currentSchemeId ? '选择来源报表' : '请先选择比价方案'}
+                    disabled={isReportLocked || !currentSchemeId}
+                    options={currentReportOptions}
+                    onChange={(_val: string, option) => {
+                      const name = (option as any)?.label;
+                      form.setFieldValue('sourceReportName', typeof name === 'string' ? name : undefined);
+                    }}
+                  />
+                </Form.Item>
+                <Form.Item name="sourceReportName" hidden>
+                  <Input />
                 </Form.Item>
               </Col>
             </Row>
@@ -750,7 +919,7 @@ const MonitoringManagement: React.FC = () => {
             <Form.Item
               name="cronExpression"
               label="定时规则"
-              initialValue="0 10 * * *"
+              initialValue="0 0 10 * * ? *"
               rules={[{ required: true, message: '请配置定时规则' }]}
             >
               <Input
@@ -766,89 +935,13 @@ const MonitoringManagement: React.FC = () => {
               padding: 16,
               background: '#fafafa'
             }}>
-              <Cron
+              <CronExpressionEditor
                 value={cronValue}
-                setValue={(newValue: string) => {
+                onChange={(newValue) => {
                   setCronValue(newValue);
                   form.setFieldValue('cronExpression', newValue);
                 }}
-                locale={{
-                  everyText: '每',
-                  emptyMonths: '每月',
-                  emptyMonthDays: '每天',
-                  emptyMonthDaysShort: '日',
-                  emptyWeekDays: '每周',
-                  emptyWeekDaysShort: '周',
-                  emptyHours: '每小时',
-                  emptyMinutes: '每分钟',
-                  emptyMinutesForHourPeriod: '每',
-                  yearOption: '年',
-                  monthOption: '月',
-                  weekOption: '周',
-                  dayOption: '日',
-                  hourOption: '时',
-                  minuteOption: '分',
-                  rebootOption: '重启时',
-                  prefixPeriod: '每',
-                  prefixMonths: '在',
-                  prefixMonthDays: '在',
-                  prefixWeekDays: '在',
-                  prefixWeekDaysForMonthAndYearPeriod: '并且',
-                  prefixHours: '在',
-                  prefixMinutes: '在',
-                  prefixMinutesForHourPeriod: '在',
-                  suffixMinutesForHourPeriod: '分',
-                  errorInvalidCron: 'Cron 表达式无效',
-                  clearButtonText: '清空',
-                  weekDays: [
-                    '周日',
-                    '周一',
-                    '周二',
-                    '周三',
-                    '周四',
-                    '周五',
-                    '周六'
-                  ],
-                  months: [
-                    '一月',
-                    '二月',
-                    '三月',
-                    '四月',
-                    '五月',
-                    '六月',
-                    '七月',
-                    '八月',
-                    '九月',
-                    '十月',
-                    '十一月',
-                    '十二月'
-                  ],
-                  altWeekDays: [
-                    '周日',
-                    '周一',
-                    '周二',
-                    '周三',
-                    '周四',
-                    '周五',
-                    '周六'
-                  ],
-                  altMonths: [
-                    '一月',
-                    '二月',
-                    '三月',
-                    '四月',
-                    '五月',
-                    '六月',
-                    '七月',
-                    '八月',
-                    '九月',
-                    '十月',
-                    '十一月',
-                    '十二月'
-                  ]
-                }}
-                allowedDropdowns={['period', 'months', 'month-days', 'week-days', 'hours', 'minutes']}
-                allowedPeriods={['year', 'month', 'week', 'day', 'hour', 'minute']}
+                defaultTab="day"
               />
             </div>
           </Card>
@@ -863,61 +956,96 @@ const MonitoringManagement: React.FC = () => {
               </Button>
             }
           >
+            <Row gutter={16}>
+              <Col xs={24} md={12}>
+                <Form.Item name="notificationReceivers" label="接收用户" style={{ marginBottom: 12 }}>
+                  <Select
+                    mode="multiple"
+                    placeholder="选择用户"
+                    style={{ width: '100%' }}
+                    options={[
+                      { label: '张三', value: 'user_zhangsan' },
+                      { label: '李四', value: 'user_lisi' },
+                      { label: '王五', value: 'user_wangwu' },
+                      { label: '赵六', value: 'user_zhaoliu' }
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item name="notificationReceiverGroups" label="接收用户组" style={{ marginBottom: 12 }}>
+                  <Select
+                    mode="multiple"
+                    placeholder="选择用户组"
+                    style={{ width: '100%' }}
+                    options={[
+                      { label: '采购组', value: 'group_purchase' },
+                      { label: '风控组', value: 'group_risk' },
+                      { label: '价格分析组', value: 'group_price' }
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
             <Form.Item
-              name="notificationReceivers"
-              label="接收人"
-              rules={[{ required: true, message: '请选择至少一个接收人' }]}
+              noStyle
+              shouldUpdate={(prev, cur) =>
+                prev.notificationReceivers !== cur.notificationReceivers ||
+                prev.notificationReceiverGroups !== cur.notificationReceiverGroups
+              }
             >
-              <Select
-                mode="multiple"
-                placeholder="请选择接收人"
-                style={{ width: '100%' }}
-                options={[
-                  { label: '张三 (zhangsan@example.com)', value: 'user_zhangsan' },
-                  { label: '李四 (lisi@example.com)', value: 'user_lisi' },
-                  { label: '王五 (wangwu@example.com)', value: 'user_wangwu' },
-                  { label: '赵六 (zhaoliu@example.com)', value: 'user_zhaoliu' },
-                  { label: '采购组', value: 'group_purchase' },
-                  { label: '风控组', value: 'group_risk' }
-                ]}
-              />
-            </Form.Item>
-            <Form.Item
-              name="notificationChannels"
-              label="通知方式"
-              rules={[{ required: true, message: '请选择至少一种通知方式' }]}
-            >
-              <Checkbox.Group
-                options={[
-                  { label: '邮件', value: 'email' },
-                  { label: '短信', value: 'sms' },
-                  { label: '钉钉', value: 'dingtalk' },
-                  { label: '企业微信', value: 'wechat' }
-                ]}
-              />
-            </Form.Item>
-            <Form.Item
-              name="alertNotificationTitle"
-              label="消息标题"
-              initialValue="【监控预警】{taskName} 发现异常"
-              rules={[{ required: true, message: '请输入消息标题' }]}
-            >
-              <Input
-                placeholder="点击下方变量标签插入"
-                onFocus={() => setActiveInputField('alertTitle')}
-              />
-            </Form.Item>
-            <Form.Item
-              name="alertNotificationDescription"
-              label="消息内容"
-              initialValue="任务 {taskName} 触发 {severity} 预警，命中 {hitCount} 条记录。"
-              rules={[{ required: true, message: '请输入消息内容' }]}
-            >
-              <TextArea
-                rows={4}
-                placeholder="点击下方变量标签插入"
-                onFocus={() => setActiveInputField('alertContent')}
-              />
+              {({ getFieldValue }) => {
+                const receivers = getFieldValue('notificationReceivers') || [];
+                const receiverGroups = getFieldValue('notificationReceiverGroups') || [];
+                const hasReceivers =
+                  (Array.isArray(receivers) && receivers.length > 0) ||
+                  (Array.isArray(receiverGroups) && receiverGroups.length > 0);
+
+                return (
+                  <>
+                    <Form.Item
+                      name="notificationChannels"
+                      label="通知方式"
+                      required={hasReceivers}
+                      rules={hasReceivers ? [{ required: true, message: '请选择至少一种通知方式' }] : []}
+                    >
+                      <Checkbox.Group
+                        options={[
+                          { label: '邮件', value: 'email' },
+                          { label: '短信', value: 'sms', disabled: true },
+                          { label: '钉钉', value: 'dingtalk' },
+                          { label: '企业微信', value: 'wechat', disabled: true }
+                        ]}
+                      />
+                    </Form.Item>
+                    <Form.Item
+                      name="alertNotificationTitle"
+                      label="预警消息标题"
+                      initialValue="【监控预警】{taskName} 发现异常"
+                      required={hasReceivers}
+                      rules={hasReceivers ? [{ required: true, message: '请填写预警消息标题' }] : []}
+                    >
+                      <Input
+                        placeholder="如：{taskName} 触发{severity}预警"
+                        onFocus={() => setActiveInputField('alertTitle')}
+                      />
+                    </Form.Item>
+                    <Form.Item
+                      name="alertNotificationDescription"
+                      label="预警消息内容"
+                      initialValue="任务 {taskName} 触发 {severity} 预警，命中 {hitCount} 条记录。"
+                      required={hasReceivers}
+                      rules={hasReceivers ? [{ required: true, message: '请输入消息内容' }] : []}
+                    >
+                      <TextArea
+                        rows={4}
+                        placeholder="点击下方变量标签插入"
+                        onFocus={() => setActiveInputField('alertContent')}
+                      />
+                    </Form.Item>
+                  </>
+                );
+              }}
             </Form.Item>
             <div style={{ marginBottom: 16 }}>
               <Space wrap>
@@ -934,34 +1062,6 @@ const MonitoringManagement: React.FC = () => {
               </Space>
               <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>点击标签可插入模板变量</Text>
             </div>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item
-                  name="noAlertNotificationTitle"
-                  label="无预警消息标题"
-                  initialValue="【监控预警】{taskName} 未发现异常"
-                  rules={[{ required: true, message: '请输入消息标题' }]}
-                >
-                  <Input
-                    placeholder="点击下方变量标签插入"
-                    onFocus={() => setActiveInputField('noAlertTitle')}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="noAlertNotificationDescription"
-                  label="无预警消息内容"
-                  initialValue="任务 {taskName} 在 {time} 时段未发现异常。"
-                  rules={[{ required: true, message: '请输入消息内容' }]}
-                >
-                  <Input
-                    placeholder="点击下方变量标签插入"
-                    onFocus={() => setActiveInputField('noAlertContent')}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
           </Card>
         </Form>
       </div>
@@ -1126,18 +1226,10 @@ const MonitoringManagement: React.FC = () => {
       key: 'schemeName'
     },
     {
-      title: '监控范围',
-      key: 'scope',
-      render: (record: MonitorTask) => (
-        <Space wrap>
-          {record.dimensions.map(dim => (
-            <Tag key={dim} color="blue">{dim}</Tag>
-          ))}
-          {record.metrics.map(metric => (
-            <Tag key={metric} color="green">{metric}</Tag>
-          ))}
-        </Space>
-      )
+      title: '来源报表',
+      dataIndex: 'sourceReportName',
+      key: 'sourceReportName',
+      render: (text: string, record: MonitorTask) => <Text>{text || record.sourceReportId || '-'}</Text>
     },
     {
       title: '规则概要',
@@ -1173,7 +1265,10 @@ const MonitoringManagement: React.FC = () => {
             结果预览
           </Button>
           <Tooltip title="查看详情">
-            <Button type="text" icon={<EyeOutlined />} />
+            <Button type="text" icon={<EyeOutlined />} onClick={() => handleViewTaskDetail(record)} />
+          </Tooltip>
+          <Tooltip title="编辑">
+            <Button type="text" icon={<EditOutlined />} onClick={() => handleEditTask(record)} />
           </Tooltip>
           <Tooltip title={record.enabled ? "暂停" : "启动"}>
             <Button
@@ -1316,7 +1411,6 @@ const MonitoringManagement: React.FC = () => {
     }
   ];
 
-  const myMonthlyAlertCount = myAlertRecords.length;
   const allMonthlyAlertCount = allAlertRecords.length;
 
   if (viewMode === 'create') {
@@ -1345,123 +1439,147 @@ const MonitoringManagement: React.FC = () => {
       </div>
 
       {/* 统计概览 */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              title="监控任务总数"
-              value={activeTab === 'admin' ? allMonitorTasks.length : myMonitorTasks.length}
-              prefix={<Target className="h-4 w-4" />}
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              title="运行中任务"
-              value={(activeTab === 'admin' ? allMonitorTasks : myMonitorTasks).filter(t => t.enabled).length}
-              prefix={<PlayCircleOutlined className="h-4 w-4" />}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              title="近一月预警数"
-              value={activeTab === 'admin' ? allMonthlyAlertCount : myMonthlyAlertCount}
-              prefix={<WarningOutlined className="h-4 w-4" />}
-              valueStyle={{ color: '#fa8c16' }}
-            />
-          </Card>
-        </Col>
-      </Row>
+      {false && (
+        <Row gutter={16} style={{ marginBottom: 24 }}>
+          <Col span={8}>
+            <Card>
+              <Statistic
+                title="监控任务总数"
+                value={allMonitorTasks.length}
+                prefix={<Target className="h-4 w-4" />}
+                valueStyle={{ color: '#1890ff' }}
+              />
+            </Card>
+          </Col>
+          <Col span={8}>
+            <Card>
+              <Statistic
+                title="运行中任务"
+                value={allMonitorTasks.filter(t => t.enabled).length}
+                prefix={<PlayCircleOutlined className="h-4 w-4" />}
+                valueStyle={{ color: '#52c41a' }}
+              />
+            </Card>
+          </Col>
+          <Col span={8}>
+            <Card>
+              <Statistic
+                title="近一月预警数"
+                value={allMonthlyAlertCount}
+                prefix={<WarningOutlined className="h-4 w-4" />}
+                valueStyle={{ color: '#fa8c16' }}
+              />
+            </Card>
+          </Col>
+        </Row>
+      )}
 
       {/* 主要内容区域 */}
       <Card>
-        <Tabs activeKey={activeTab} onChange={setActiveTab}>
-          <Tabs.TabPane
-            tab={
-              <Space>
-                <Target className="h-4 w-4" />
-                我的任务
-              </Space>
-            }
-            key="tasks"
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Tooltip title="当前仅展示你创建的监控任务及其产生的预警记录">
-                <Text type="secondary">范围：我创建的</Text>
-              </Tooltip>
-
-              <Radio.Group
-                value={listView}
-                onChange={(e) => setListView(e.target.value)}
+        <Card size="small" style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <Space wrap>
+              <Input
+                placeholder="任务名称"
+                allowClear
+                style={{ width: 220 }}
+                value={filterTaskName}
+                onChange={(e) => setFilterTaskName(e.target.value)}
+              />
+              <Select
+                placeholder="状态"
+                allowClear
+                style={{ width: 160 }}
+                value={filterStatus}
+                onChange={(v) => setFilterStatus(v)}
+                options={[
+                  { label: '运行中', value: 'enabled' },
+                  { label: '已暂停', value: 'disabled' }
+                ]}
+              />
+              <Button
+                onClick={() => setSchemeFilterVisible(true)}
               >
-                <Radio value="tasks">任务</Radio>
-                <Radio value="alerts">预警记录</Radio>
-              </Radio.Group>
-            </div>
-
-            {listView === 'tasks' ? (
-              <Table
-                columns={taskColumns}
-                dataSource={myMonitorTasks}
-                rowKey="id"
-                pagination={{ pageSize: 10 }}
+                比价方案{filterSchemeIds.length > 0 ? `（${filterSchemeIds.length}）` : ''}
+              </Button>
+              <Select
+                placeholder="来源报表"
+                allowClear
+                style={{ width: 240 }}
+                value={filterSourceReportId}
+                onChange={(v, option) => {
+                  setFilterSourceReportId(v);
+                  const name = (option as any)?.label;
+                  setFilterSourceReportName(typeof name === 'string' ? name : undefined);
+                }}
+                options={sourceReportOptions}
               />
-            ) : (
-              <Table
-                columns={alertColumns}
-                dataSource={myAlertRecords.filter(a => a.status === 'active')}
-                rowKey="id"
-                pagination={{ pageSize: 10 }}
-              />
-            )}
-          </Tabs.TabPane>
+            </Space>
+            <Space>
+              {filterSourceReportId && (
+                <Text type="secondary">已按来源报表筛选：{filterSourceReportName || filterSourceReportId}</Text>
+              )}
+              {filterSchemeIds.length > 0 && (
+                <Tooltip title={schemeFilterSummary}>
+                  <Text type="secondary">已筛选方案：{schemeFilterSummary}</Text>
+                </Tooltip>
+              )}
+              <Button onClick={handleClearFilters}>清空筛选</Button>
+            </Space>
+          </div>
+        </Card>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <Tooltip title="所有任务为原型演示：当前展示全部监控任务及其产生的预警记录（后续会接入权限控制）">
+            <Text type="secondary">范围：全部</Text>
+          </Tooltip>
 
-          <Tabs.TabPane
-            tab={
-              <Space>
-                <Target className="h-4 w-4" />
-                所有任务
-              </Space>
-            }
-            key="admin"
+          <Radio.Group
+            value={listView}
+            onChange={(e) => setListView(e.target.value)}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Tooltip title="所有任务为原型演示：当前展示全部监控任务及其产生的预警记录（后续会接入权限控制）">
-                <Text type="secondary">范围：全部</Text>
-              </Tooltip>
+            <Radio value="tasks">任务</Radio>
+            <Radio value="alerts">预警记录</Radio>
+          </Radio.Group>
+        </div>
 
-              <Radio.Group
-                value={adminListView}
-                onChange={(e) => setAdminListView(e.target.value)}
-              >
-                <Radio value="tasks">任务</Radio>
-                <Radio value="alerts">预警记录</Radio>
-              </Radio.Group>
-            </div>
-
-            {adminListView === 'tasks' ? (
-              <Table
-                columns={taskColumns}
-                dataSource={allMonitorTasks}
-                rowKey="id"
-                pagination={{ pageSize: 10 }}
-              />
-            ) : (
-              <Table
-                columns={alertColumns}
-                dataSource={allAlertRecords.filter(a => a.status === 'active')}
-                rowKey="id"
-                pagination={{ pageSize: 10 }}
-              />
-            )}
-          </Tabs.TabPane>
-        </Tabs>
+        {listView === 'tasks' ? (
+          <Table
+            columns={taskColumns}
+            dataSource={filteredAllMonitorTasks}
+            rowKey="id"
+            pagination={{ pageSize: 10 }}
+          />
+        ) : (
+          <Table
+            columns={alertColumns}
+            dataSource={allAlertRecords.filter(a => a.status === 'active')}
+            rowKey="id"
+            pagination={{ pageSize: 10 }}
+          />
+        )}
       </Card>
+
+      <Modal
+        title="选择比价方案"
+        open={schemeFilterVisible}
+        onCancel={() => setSchemeFilterVisible(false)}
+        onOk={() => setSchemeFilterVisible(false)}
+        width={520}
+      >
+        <Checkbox.Group
+          style={{ width: '100%' }}
+          value={filterSchemeIds}
+          onChange={(vals) => setFilterSchemeIds(vals as string[])}
+        >
+          <Space direction="vertical" style={{ width: '100%' }}>
+            {schemeOptions.map(s => (
+              <Checkbox key={s.value} value={s.value}>
+                {s.label}
+              </Checkbox>
+            ))}
+          </Space>
+        </Checkbox.Group>
+      </Modal>
 
       <Modal
         open={alertDetailVisible}
