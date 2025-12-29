@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Card, Button, Table, Tag, Space, Tooltip, Input, Select, message } from 'antd';
+import { Card, Button, Table, Tag, Space, Tooltip, Input, Select, Tabs, message } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import MonitoringManagement from './MonitoringManagement';
 
 const { Search } = Input;
 const { Option } = Select;
@@ -22,6 +23,7 @@ const PriceSchemeListV2: React.FC = () => {
   const navigate = useNavigate();
   const [keyword, setKeyword] = useState<string>('');
   const [org, setOrg] = useState<string | undefined>(undefined);
+  const [activeTab, setActiveTab] = useState<'scheme' | 'monitor'>("scheme");
 
   const data: SchemeRow[] = useMemo(() => [
     { id: '1', status: '启用', manageOrg: '集团', schemeCode: 'CP00001062', schemeName: '华东耗材专题V2', modelName: '供应商比价', reportCount: 2, creator: '管理员', updatedAt: '2025-12-02' },
@@ -76,8 +78,7 @@ const PriceSchemeListV2: React.FC = () => {
       render: (_: any, record: SchemeRow) => (
         <Space size="small">
           <Button size="small" type="link" icon={<EditOutlined />} onClick={() => navigate(`/price-scheme-v2/create?id=${record.id}`)}>编辑</Button>
-          <Button size="small" type="link" onClick={() => navigate(`/monitoring-management?entry=create&schemeId=${record.id}`)}>创建监控(V1)</Button>
-          <Button size="small" type="link" onClick={() => navigate(`/monitoring-task-create-v2?solutionId=${record.id}`)}>创建监控(V2)</Button>
+          <Button size="small" type="link" onClick={() => navigate(`/monitoring-management?entry=create&schemeId=${record.id}&schemeName=${encodeURIComponent(record.schemeName)}`)}>创建监控任务</Button>
           <Button size="small" type="link" danger icon={<DeleteOutlined />} onClick={() => message.success('已删除(原型)')}>删除</Button>
         </Space>
       )
@@ -86,45 +87,65 @@ const PriceSchemeListV2: React.FC = () => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex items-center gap-2">
-          <Search
-            placeholder="搜索：编码、名称"
-            allowClear
-            onSearch={setKeyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            style={{ width: 260 }}
-          />
-          <Select
-            allowClear
-            placeholder="管理组织"
-            style={{ width: 180 }}
-            value={org}
-            onChange={setOrg}
-          >
-            <Option value="集团">集团</Option>
-            <Option value="事业部A">事业部A</Option>
-            <Option value="子公司B">子公司B</Option>
-          </Select>
-          <Button onClick={() => message.info('筛选(原型)')}>查询</Button>
-        </div>
-        <Space>
-          <Button onClick={() => navigate('/monitoring-management')}>监控任务</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/price-scheme-v2/create')}>
-            新建方案
-          </Button>
-        </Space>
-      </div>
+      <Tabs
+        activeKey={activeTab}
+        onChange={(k) => setActiveTab(k as 'scheme' | 'monitor')}
+        items={[
+          {
+            key: 'scheme',
+            label: '比价方案',
+            children: (
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center gap-2">
+                    <Search
+                      placeholder="搜索：编码、名称"
+                      allowClear
+                      onSearch={setKeyword}
+                      onChange={(e) => setKeyword(e.target.value)}
+                      style={{ width: 260 }}
+                    />
+                    <Select
+                      allowClear
+                      placeholder="管理组织"
+                      style={{ width: 180 }}
+                      value={org}
+                      onChange={setOrg}
+                    >
+                      <Option value="集团">集团</Option>
+                      <Option value="事业部A">事业部A</Option>
+                      <Option value="子公司B">子公司B</Option>
+                    </Select>
+                    <Button onClick={() => message.info('筛选(原型)')}>查询</Button>
+                  </div>
+                  <Space>
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/price-scheme-v2/create')}>
+                      新建方案
+                    </Button>
+                  </Space>
+                </div>
 
-      <Card>
-        <Table
-          rowKey="id"
-          columns={columns as any}
-          dataSource={filtered}
-          pagination={{ pageSize: 10, showSizeChanger: true, showQuickJumper: true, showTotal: (t) => `共 ${t} 条记录` }}
-          scroll={{ x: 1100, y: 600 }}
-        />
-      </Card>
+                <Card>
+                  <Table
+                    rowKey="id"
+                    columns={columns as any}
+                    dataSource={filtered}
+                    pagination={{ pageSize: 10, showSizeChanger: true, showQuickJumper: true, showTotal: (t) => `共 ${t} 条记录` }}
+                    scroll={{ x: 1100, y: 600 }}
+                  />
+                </Card>
+              </>
+            )
+          },
+          {
+            key: 'monitor',
+            label: '监控任务',
+            children: (
+              <MonitoringManagement />
+            )
+          }
+        ]}
+      />
     </div>
   );
 };

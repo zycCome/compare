@@ -764,7 +764,6 @@ const PriceSchemeManagementV2: React.FC = () => {
     recordCount: number;
     objectName?: string; // 添加基准对象名称字段
     objectDescription?: string; // 方案内对象描述
-    joinDimensions?: string[]; // 关联维度（支持多字段）
   }>>([]);
   const [selectedBaselineDataset, setSelectedBaselineDataset] = useState<{
     id: string;
@@ -773,7 +772,6 @@ const PriceSchemeManagementV2: React.FC = () => {
     recordCount: number;
     objectName?: string; // 添加基准对象名称字段
     objectDescription?: string;
-    joinDimensions?: string[];
   } | null>(null);
   const [baselineRangeModalVisible, setBaselineRangeModalVisible] = useState(false);
   const [baselineRanges, setBaselineRanges] = useState<Array<{
@@ -857,51 +855,9 @@ const PriceSchemeManagementV2: React.FC = () => {
     { id: 'ds_historical', name: '历史采购数据集', description: '历史采购记录和价格变化', recordCount: 45670 }
   ];
 
-  const mockDatasetFieldsByDatasetId: Record<string, Array<{ field: string; name: string; type: string; attribute: string }>> = {
-    ds_agreement: [
-      { field: 'product_code', name: '产品编码', type: 'string', attribute: '文本' },
-      { field: 'product_name', name: '产品名称', type: 'string', attribute: '文本' },
-      { field: 'sku', name: 'SKU编码', type: 'string', attribute: '文本' },
-      { field: 'org', name: '组织', type: 'string', attribute: '文本' },
-      { field: 'month', name: '采购月', type: 'string', attribute: '文本' },
-      { field: 'price', name: '协议价', type: 'number', attribute: '数值' }
-    ],
-    ds_bid: [
-      { field: 'product_code', name: '产品编码', type: 'string', attribute: '文本' },
-      { field: 'product_name', name: '产品名称', type: 'string', attribute: '文本' },
-      { field: 'sku', name: 'SKU编码', type: 'string', attribute: '文本' },
-      { field: 'org', name: '组织', type: 'string', attribute: '文本' },
-      { field: 'bid_no', name: '招标编号', type: 'string', attribute: '文本' },
-      { field: 'price', name: '中标价', type: 'number', attribute: '数值' }
-    ],
-    ds_market: [
-      { field: 'product_code', name: '产品编码', type: 'string', attribute: '文本' },
-      { field: 'product_name', name: '产品名称', type: 'string', attribute: '文本' },
-      { field: 'sku', name: 'SKU编码', type: 'string', attribute: '文本' },
-      { field: 'org', name: '组织', type: 'string', attribute: '文本' },
-      { field: 'date', name: '日期', type: 'string', attribute: '文本' },
-      { field: 'price', name: '市场价', type: 'number', attribute: '数值' }
-    ],
-    ds_historical: [
-      { field: 'product_code', name: '产品编码', type: 'string', attribute: '文本' },
-      { field: 'product_name', name: '产品名称', type: 'string', attribute: '文本' },
-      { field: 'sku', name: 'SKU编码', type: 'string', attribute: '文本' },
-      { field: 'org', name: '组织', type: 'string', attribute: '文本' },
-      { field: 'io_type', name: '出入库类型', type: 'string', attribute: '文本' },
-      { field: 'qty', name: '出入库数量', type: 'number', attribute: '数值' }
-    ]
-  };
-
-  const requiredComparisonJoinDimensions = useMemo(() => {
-    const fromComparisonSubject = (selectedDimensions || []).map(d => d.field).filter(Boolean);
-    // 比对主体维度至少要有（原型默认产品编码 + 产品名称）
-    return fromComparisonSubject.length > 0 ? fromComparisonSubject : ['product_code', 'product_name'];
-  }, [selectedDimensions]);
-
   const updateBaselineDataset = (datasetId: string, patch: Partial<{
     objectName: string;
     objectDescription: string;
-    joinDimensions: string[];
   }>) => {
     setSelectedBaselineDatasets(prev => prev.map(d => {
       if (d.id !== datasetId) return d;
@@ -918,76 +874,6 @@ const PriceSchemeManagementV2: React.FC = () => {
       };
     });
   };
-
-  const getAvailableJoinFieldsForBaseline = (baselineDatasetId: string) => {
-    const baselineFields = mockDatasetFieldsByDatasetId[baselineDatasetId] || [];
-    const baselineSet = new Set(baselineFields.map(f => f.field));
-
-    const comparisonFields = mockDatasetFieldsByDatasetId[comparisonObject.datasetId] || [];
-    const comparisonSet = new Set(comparisonFields.map(f => f.field));
-
-    // 可选 join 字段：比对数据集字段 ∩ 当前基准数据集字段（交集）
-    const intersectionFields = comparisonFields.filter(f => baselineSet.has(f.field));
-
-    // 保证 required 的字段在列表中靠前（如果也在交集中）
-    const requiredFirst: Array<{ field: string; name: string; type: string; attribute: string }> = [];
-    requiredComparisonJoinDimensions.forEach((f) => {
-      if (baselineSet.has(f) && comparisonSet.has(f)) {
-        const meta = intersectionFields.find(x => x.field === f) || baselineFields.find(x => x.field === f);
-        if (meta) requiredFirst.push(meta);
-      }
-    });
-
-    const requiredSet = new Set(requiredFirst.map(x => x.field));
-    const rest = intersectionFields.filter(x => !requiredSet.has(x.field));
-    return [...requiredFirst, ...rest];
-  };
-
-  const getDefaultJoinDimensions = (baselineDatasetId: string) => {
-    const available = getAvailableJoinFieldsForBaseline(baselineDatasetId);
-    const availableSet = new Set(available.map(x => x.field));
-    const required = requiredComparisonJoinDimensions.filter(x => availableSet.has(x));
-    if (required.length > 0) return required;
-    if (availableSet.has('sku')) return ['sku'];
-    return available[0]?.field ? [available[0].field] : [];
-  };
-
-  useEffect(() => {
-    // 当“比对主体维度”或“比对数据集”变化时：
-    // - 重新计算交集可选字段
-    // - 强制所有基准对象的关联维度至少包含 required（若该字段在交集中存在）
-    setSelectedBaselineDatasets(prev => prev.map(b => {
-      const available = getAvailableJoinFieldsForBaseline(b.id).map(x => x.field);
-      const next = (b.joinDimensions || []).filter(x => available.includes(x));
-      const required = requiredComparisonJoinDimensions.filter(x => available.includes(x));
-
-      // 基准对象的 joinDimensions 不能少于 required
-      const merged = Array.from(new Set([...
-        required,
-        ...next
-      ]));
-
-      return {
-        ...b,
-        joinDimensions: merged.length ? merged : getDefaultJoinDimensions(b.id)
-      };
-    }));
-
-    setSelectedBaselineDataset(prev => {
-      if (!prev) return prev;
-      const available = getAvailableJoinFieldsForBaseline(prev.id).map(x => x.field);
-      const next = (prev.joinDimensions || []).filter(x => available.includes(x));
-      const required = requiredComparisonJoinDimensions.filter(x => available.includes(x));
-      const merged = Array.from(new Set([...
-        required,
-        ...next
-      ]));
-      return {
-        ...prev,
-        joinDimensions: merged.length ? merged : getDefaultJoinDimensions(prev.id)
-      };
-    });
-  }, [requiredComparisonJoinDimensions, comparisonObject.datasetId]);
 
   // 模拟数据集字段数据
   const mockDatasetFields = [
@@ -2146,27 +2032,16 @@ const PriceSchemeManagementV2: React.FC = () => {
                             }}>
                               <Row gutter={10}>
                                 <Col span={12}>
-                                  <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>关联维度（Join Key）</div>
+                                  <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>基准数据集</div>
                                   <Select
-                                    mode="multiple"
+                                    value={selectedBaselineDataset.id}
                                     style={{ width: '100%' }}
-                                    value={selectedBaselineDataset.joinDimensions || getDefaultJoinDimensions(selectedBaselineDataset.id)}
-                                    placeholder="默认 sku，可多选"
-                                    options={getAvailableJoinFieldsForBaseline(selectedBaselineDataset.id).map(f => ({
-                                      label: `${f.name} (${f.field})`,
-                                      value: f.field
-                                    }))}
-                                    onChange={(v) => {
-                                      const available = getAvailableJoinFieldsForBaseline(selectedBaselineDataset.id).map(x => x.field);
-                                      const next = (Array.isArray(v) ? v : []).filter(x => available.includes(x));
-                                      const required = requiredComparisonJoinDimensions.filter(x => available.includes(x));
-                                      const merged = Array.from(new Set([...required, ...next]));
-                                      if (required.some(r => !next.includes(r))) {
-                                        message.warning('关联维度必须包含比对主体维度，已自动补齐');
-                                      }
-                                      updateBaselineDataset(selectedBaselineDataset.id, { joinDimensions: merged });
-                                    }}
-                                  />
+                                    disabled
+                                  >
+                                    {mockDatasets.map(d => (
+                                      <Option key={d.id} value={d.id}>{d.name}</Option>
+                                    ))}
+                                  </Select>
                                 </Col>
                                 <Col span={12}>
                                   <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>对象描述</div>
@@ -3209,17 +3084,10 @@ const PriceSchemeManagementV2: React.FC = () => {
             // 查找选中的数据集
             const selectedDataset = mockDatasets.find(d => d.id === newBenchmarkObject.datasetId);
             if (selectedDataset) {
-              // 添加到基准对象列表
-              const availableJoinFields = getAvailableJoinFieldsForBaseline(selectedDataset.id);
-              const defaultJoinDimensions = availableJoinFields.some(f => f.field === 'sku')
-                ? ['sku']
-                : (availableJoinFields[0]?.field ? [availableJoinFields[0].field] : []);
-
               const newObject = {
                 ...selectedDataset,
                 objectName: newBenchmarkObject.objectName.trim(),
-                objectDescription: newBenchmarkObjectDesc || '',
-                joinDimensions: defaultJoinDimensions
+                objectDescription: newBenchmarkObjectDesc || ''
               };
 
               setSelectedBaselineDatasets(prev => [...prev, newObject]);

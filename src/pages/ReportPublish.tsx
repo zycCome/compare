@@ -41,6 +41,15 @@ const { Title, Text } = Typography;
 const { Content } = Layout;
 const { TextArea } = Input;
 
+const mockOwnerOrgs = [
+  { id: 'org_group', name: '集团总部' },
+  { id: 'org_dept_a', name: '事业部A' },
+  { id: 'org_dept_b', name: '事业部B' },
+  { id: 'org_sub_c', name: '子公司C' },
+  { id: 'org_branch_c1', name: '分公司C1' },
+  { id: 'org_branch_c2', name: '分公司C2' }
+];
+
 interface ReportItem {
   id: string;
   name: string;
@@ -596,11 +605,14 @@ const ReportPublish: React.FC = () => {
 
       // 模拟保存逻辑
       setTimeout(() => {
+        const ownerOrgName = mockOwnerOrgs.find(o => o.id === values.ownerOrgId)?.name;
         const reportData = {
           id: `report_${Date.now()}`,
           reportName: values.reportName,
           schemeId: selectedScheme,
           schemeName: schemes.find(s => s.id === selectedScheme)?.name,
+          ownerOrgId: values.ownerOrgId,
+          ownerOrgName,
           description: values.description,
           config: {
             droppedItems,
@@ -962,70 +974,82 @@ const ReportPublish: React.FC = () => {
                         style={{ fontSize: '14px' }}
                       />
                     </Form.Item>
-                  </Form>
-                </div>
-
-                {/* 比价方案 */}
-                <div className="px-3 pb-3">
-                  <div className="text-xs text-gray-600 mb-1">比价方案</div>
-                  <Form.Item
-                    name="schemeId"
-                    rules={[{ required: true, message: '请选择方案' }]}
-                    className="mb-0"
-                  >
-                    <Select
-                      onChange={handleSchemeChange}
-                      value={selectedScheme}
-                      placeholder="请选择比价方案"
-                      style={{ fontSize: '14px' }}
-                    >
-                      {schemes.map(scheme => (
-                        <Select.Option key={scheme.id} value={scheme.id}>
-                          {scheme.name}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </div>
-
-                {/* 报表分组 */}
-                <div className="px-3 pb-3">
-                  <div className="text-xs text-gray-600 mb-1">报表分组</div>
-                  {!isAddingGroup ? (
-                    <Select
-                      value={selectedReportGroup}
-                      onChange={handleReportGroupChange}
-                      placeholder="选择分组"
-                      allowClear
-                      style={{ fontSize: '14px' }}
-                    >
-                      {reportGroups.map(group => (
-                        <Select.Option key={group} value={group}>
-                          {group}
-                        </Select.Option>
-                      ))}
-                      <Select.Option value="add_new" className="text-blue-600">
-                        <PlusOutlined className="mr-1" />
-                        添加新分组
-                      </Select.Option>
-                    </Select>
-                  ) : (
-                    <div className="flex items-center space-x-1">
-                      <Input
-                        value={newGroupName}
-                        onChange={(e) => setNewGroupName(e.target.value)}
-                        placeholder="输入新分组名称"
-                        style={{ fontSize: '14px' }}
-                        onPressEnter={handleAddNewGroup}
-                      />
-                      <Button size="small" type="primary" onClick={handleAddNewGroup}>
-                        确定
-                      </Button>
-                      <Button size="small" onClick={handleCancelAddGroup}>
-                        取消
-                      </Button>
+                    <div className="px-3 pb-3">
+                      <div className="text-xs text-gray-600 mb-1">比价方案</div>
+                      <Form.Item
+                        name="schemeId"
+                        rules={[{ required: true, message: '请选择方案' }]}
+                        className="mb-0"
+                      >
+                        <Select
+                          onChange={handleSchemeChange}
+                          placeholder="请选择比价方案"
+                          style={{ fontSize: '14px' }}
+                        >
+                          {schemes.map(scheme => (
+                            <Select.Option key={scheme.id} value={scheme.id}>
+                              {scheme.name}
+                            </Select.Option>
+                          ))}
+                        </Select>
+                      </Form.Item>
                     </div>
-                  )}
+
+                    <div className="px-3 pb-3">
+                      <div className="text-xs text-gray-600 mb-1">所属组织</div>
+                      <Form.Item
+                        name="ownerOrgId"
+                        rules={[{ required: true, message: '请选择所属组织' }]}
+                        className="mb-0"
+                      >
+                        <Select
+                          placeholder="请选择所属组织"
+                          style={{ fontSize: '14px' }}
+                          options={mockOwnerOrgs.map(o => ({ label: o.name, value: o.id }))}
+                          allowClear
+                        />
+                      </Form.Item>
+                    </div>
+
+                    <div className="px-3 pb-3">
+                      <div className="text-xs text-gray-600 mb-1">报表分组</div>
+                      {!isAddingGroup ? (
+                        <Select
+                          value={selectedReportGroup}
+                          onChange={handleReportGroupChange}
+                          placeholder="选择分组"
+                          allowClear
+                          style={{ fontSize: '14px' }}
+                        >
+                          {reportGroups.map(group => (
+                            <Select.Option key={group} value={group}>
+                              {group}
+                            </Select.Option>
+                          ))}
+                          <Select.Option value="add_new" className="text-blue-600">
+                            <PlusOutlined className="mr-1" />
+                            添加新分组
+                          </Select.Option>
+                        </Select>
+                      ) : (
+                        <div className="flex items-center space-x-1">
+                          <Input
+                            value={newGroupName}
+                            onChange={(e) => setNewGroupName(e.target.value)}
+                            placeholder="输入新分组名称"
+                            style={{ fontSize: '14px' }}
+                            onPressEnter={handleAddNewGroup}
+                          />
+                          <Button size="small" type="primary" onClick={handleAddNewGroup}>
+                            确定
+                          </Button>
+                          <Button size="small" onClick={handleCancelAddGroup}>
+                            取消
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </Form>
                 </div>
               </div>
 

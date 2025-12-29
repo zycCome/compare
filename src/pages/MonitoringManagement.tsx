@@ -16,10 +16,10 @@ import {
   Statistic,
   Badge,
   Radio,
-  Tree,
   Switch,
   Modal,
-  Checkbox
+  Checkbox,
+  Tabs
 } from 'antd';
 import {
   EyeOutlined,
@@ -64,6 +64,8 @@ interface MonitorTask {
   ruleSummary: string;
   scheduleSummary: string;
   creator: string;
+  lastRunStatus?: 'success' | 'failed' | 'partial' | 'pending';
+  lastRunError?: string;
 }
 
 interface AlertNotificationResult {
@@ -88,13 +90,6 @@ interface AlertRecord {
   notifications: AlertNotificationResult[];
 }
 
-interface ReportFieldItem {
-  id: string;
-  name: string;
-  type: 'dimension' | 'metric' | 'calculated' | 'baseline';
-  description?: string;
-}
-
 type LayoutPosition = 'row' | 'column' | 'value';
 
 interface LayoutDroppedItem {
@@ -102,6 +97,16 @@ interface LayoutDroppedItem {
   name: string;
   type: 'dimension' | 'metric' | 'calculated' | 'baseline';
   position: LayoutPosition;
+}
+
+type FieldArea = 'rows' | 'columns' | 'metrics';
+
+interface ReportFieldSettingItem {
+  key: string;
+  label: string;
+  group?: string;
+  area: FieldArea;
+  enabled: boolean;
 }
 
 const MonitoringManagement: React.FC = () => {
@@ -112,30 +117,101 @@ const MonitoringManagement: React.FC = () => {
   const [taskPageMode, setTaskPageMode] = useState<'create' | 'edit' | 'view'>('create');
   const [monitorConditions, setMonitorConditions] = useState<QueryCondition[]>([]);
   const [droppedItems, setDroppedItems] = useState<LayoutDroppedItem[]>([]);
-  const [draggedItem, setDraggedItem] = useState<ReportFieldItem | null>(null);
   const [form] = Form.useForm();
-  const [expandedKeys, setExpandedKeys] = useState<string[]>(['dimension', 'metric', 'calculated', 'baseline']);
   const [activeInputField, setActiveInputField] = useState<'alertTitle' | 'alertContent' | null>(null);
-  const [alertDetail, setAlertDetail] = useState<AlertRecord | null>(null);
-  const [alertDetailVisible, setAlertDetailVisible] = useState(false);
   const [notificationDetailRecord, setNotificationDetailRecord] = useState<AlertRecord | null>(null);
   const [notificationDetailVisible, setNotificationDetailVisible] = useState(false);
   const [cronValue, setCronValue] = useState('0 0 10 * * ? *');
+  const [previewAlertRecord, setPreviewAlertRecord] = useState<AlertRecord | null>(null);
+  const [executionLogVisible, setExecutionLogVisible] = useState(false);
+  const [executionLogTaskId, setExecutionLogTaskId] = useState<string | null>(null);
+  const [reportSettingsVisible, setReportSettingsVisible] = useState(false);
+  const [reportSettingsTab, setReportSettingsTab] = useState<'fields' | 'totals'>('fields');
+  const [fieldSettings, setFieldSettings] = useState<ReportFieldSettingItem[]>([]);
+
+  const rowTotalEnabled = true;
+  const rowTotalPosition: 'top' | 'bottom' = 'bottom';
+  const colTotalEnabled = false;
+  const colTotalPosition: 'left' | 'right' = 'right';
+  const totalMetricSettings: {
+    key: string;
+    label: string;
+    enabled: boolean;
+    agg: 'sum' | 'avg' | 'max' | 'min' | 'count';
+  }[] = [
+    { key: 'supplierPrice', label: '供应商价格', enabled: true, agg: 'avg' },
+    { key: 'basePrice', label: '基准价格', enabled: true, agg: 'avg' },
+    { key: 'groupPrice', label: '集团价格', enabled: true, agg: 'avg' },
+    { key: 'diffRate', label: '差异率', enabled: true, agg: 'avg' }
+  ];
+
+  const executionLogColumns = [
+    {
+      title: '执行时间',
+      dataIndex: 'time',
+      key: 'time'
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status: ExecutionLogItem['status']) => {
+        const config: Record<ExecutionLogItem['status'], { color: string; text: string }> = {
+          success: { color: 'green', text: '成功' },
+          failed: { color: 'red', text: '失败' },
+          partial: { color: 'orange', text: '部分成功' },
+          skipped: { color: 'default', text: '已跳过' }
+        };
+        const { color, text } = config[status];
+        return <Tag color={color}>{text}</Tag>;
+      }
+    },
+    {
+      title: '命中记录数',
+      dataIndex: 'hitCount',
+      key: 'hitCount',
+      render: (count: number) => <Text>{count}</Text>
+    },
+    {
+      title: '耗时',
+      dataIndex: 'durationMs',
+      key: 'durationMs',
+      render: (ms: number) => <Text>{(ms / 1000).toFixed(2)} 秒</Text>
+    },
+    {
+      title: '触发方式',
+      dataIndex: 'triggerType',
+      key: 'triggerType',
+      render: (type: ExecutionLogItem['triggerType']) => (type === 'schedule' ? '定时' : '手动')
+    },
+    {
+      title: '异常信息',
+      dataIndex: 'errorMessage',
+      key: 'errorMessage',
+      render: (text: string | undefined) =>
+        text ? <Text type="danger">{text}</Text> : <Text type="secondary">-</Text>
+    }
+  ];
 
   const [filterTaskName, setFilterTaskName] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<'enabled' | 'disabled' | undefined>(undefined);
   const [filterSourceReportId, setFilterSourceReportId] = useState<string | undefined>(undefined);
   const [filterSourceReportName, setFilterSourceReportName] = useState<string | undefined>(undefined);
   const [filterSchemeIds, setFilterSchemeIds] = useState<string[]>([]);
-  const [schemeFilterVisible, setSchemeFilterVisible] = useState(false);
 
   const reportContext = useMemo(() => {
     const params = new URLSearchParams(location.search);
     const reportId = params.get('reportId') || '';
     const reportName = params.get('reportName') ? decodeURIComponent(params.get('reportName') as string) : '';
     const schemeId = params.get('schemeId') || '';
-    return { reportId, reportName, schemeId };
+    const schemeName = params.get('schemeName') ? decodeURIComponent(params.get('schemeName') as string) : '';
+    const entry = params.get('entry') || '';
+    return { reportId, reportName, schemeId, schemeName, entry };
   }, [location.search]);
+
+  const isSchemeLockedFromEntry = useMemo(() => {
+    return reportContext.entry === 'create' && !!reportContext.schemeId;
+  }, [reportContext.entry, reportContext.schemeId]);
 
   useEffect(() => {
     if (reportContext.reportId) {
@@ -145,7 +221,8 @@ const MonitoringManagement: React.FC = () => {
         taskName: `【${reportContext.reportName || '报表'}】监控任务`,
         sourceReportId: reportContext.reportId,
         sourceReportName: reportContext.reportName || reportContext.reportId,
-        schemeId: reportContext.schemeId || undefined
+        schemeId: reportContext.schemeId || undefined,
+        deliveryType: 'report_template'
       });
       return;
     }
@@ -157,7 +234,9 @@ const MonitoringManagement: React.FC = () => {
       setViewMode('create');
       setTaskPageMode('create');
       if (schemeId) {
-        form.setFieldsValue({ schemeId });
+        form.setFieldsValue({ schemeId, deliveryType: 'report_template' });
+      } else {
+        form.setFieldsValue({ deliveryType: 'report_template' });
       }
     }
   }, [form, location.search, reportContext.reportId, reportContext.reportName, reportContext.schemeId]);
@@ -180,7 +259,8 @@ const MonitoringManagement: React.FC = () => {
     { key: 'severity', label: '预警等级' },
     { key: 'hitCount', label: '命中记录数' },
     { key: 'time', label: '触发时间' },
-    { key: 'schemeName', label: '比价方案' }
+    { key: 'schemeName', label: '比价方案' },
+    { key: 'downloadUrl', label: '下载地址' }
   ];
 
   // 插入变量到输入框
@@ -204,17 +284,24 @@ const MonitoringManagement: React.FC = () => {
       schemeId: task.schemeId,
       severity: task.severity
     });
+    setPreviewAlertRecord(null);
     setViewMode('preview');
   };
 
-  const handleViewAlertDetail = (record: AlertRecord) => {
-    setAlertDetail(record);
-    setAlertDetailVisible(true);
+  const handlePreviewAlertRecord = (record: AlertRecord) => {
+    // 从预警记录进入预览页，表示查看的是某次触发时刻的快照（示例）
+    setPreviewAlertRecord(record);
+    setViewMode('preview');
   };
 
   const handleViewNotificationDetail = (record: AlertRecord) => {
     setNotificationDetailRecord(record);
     setNotificationDetailVisible(true);
+  };
+
+  const handleViewExecutionLog = (task: MonitorTask) => {
+    setExecutionLogTaskId(task.id);
+    setExecutionLogVisible(true);
   };
 
   const handleTestNotification = async () => {
@@ -260,7 +347,8 @@ const MonitoringManagement: React.FC = () => {
       severity: 'high',
       ruleSummary: '2 个指标条件',
       scheduleSummary: '每天 10:00 执行',
-      creator: '张三'
+      creator: '张三',
+      lastRunStatus: 'success'
     },
     {
       id: '2',
@@ -279,7 +367,9 @@ const MonitoringManagement: React.FC = () => {
       severity: 'medium',
       ruleSummary: '1 个指标条件',
       scheduleSummary: '每周一/三 09:30 执行',
-      creator: '张三'
+      creator: '张三',
+      lastRunStatus: 'failed',
+      lastRunError: '上次执行失败：SQL 执行超时（示例）'
     },
     {
       id: '3',
@@ -298,9 +388,98 @@ const MonitoringManagement: React.FC = () => {
       severity: 'medium',
       ruleSummary: '1 个指标条件',
       scheduleSummary: '每天 09:00 执行',
-      creator: '李四'
+      creator: '李四',
+      lastRunStatus: 'partial',
+      lastRunError: '部分数据源连接失败，已对可用数据执行（示例）'
     }
   ];
+
+  interface ExecutionLogItem {
+    id: string;
+    taskId: string;
+    time: string;
+    status: 'success' | 'failed' | 'partial' | 'skipped';
+    hitCount: number;
+    durationMs: number;
+    triggerType: 'schedule' | 'manual';
+    errorMessage?: string;
+  }
+
+  const executionLogsByTaskId: Record<string, ExecutionLogItem[]> = {
+    '1': [
+      {
+        id: '1-1',
+        taskId: '1',
+        time: '2025-12-12 08:50:00',
+        status: 'success',
+        hitCount: 12,
+        durationMs: 8200,
+        triggerType: 'schedule'
+      },
+      {
+        id: '1-2',
+        taskId: '1',
+        time: '2025-12-11 08:50:02',
+        status: 'success',
+        hitCount: 5,
+        durationMs: 9100,
+        triggerType: 'schedule'
+      },
+      {
+        id: '1-3',
+        taskId: '1',
+        time: '2025-12-10 15:20:30',
+        status: 'skipped',
+        hitCount: 0,
+        durationMs: 500,
+        triggerType: 'manual',
+        errorMessage: '任务被人工取消（示例）'
+      }
+    ],
+    '2': [
+      {
+        id: '2-1',
+        taskId: '2',
+        time: '2025-12-12 07:05:00',
+        status: 'failed',
+        hitCount: 0,
+        durationMs: 15000,
+        triggerType: 'schedule',
+        errorMessage: 'SQL 执行超时，连接数据库 30 秒未响应（示例）'
+      },
+      {
+        id: '2-2',
+        taskId: '2',
+        time: '2025-12-11 07:05:10',
+        status: 'failed',
+        hitCount: 0,
+        durationMs: 3000,
+        triggerType: 'manual',
+        errorMessage: '配置信息不完整：缺少报表模板 ID（示例）'
+      }
+    ],
+    '3': [
+      {
+        id: '3-1',
+        taskId: '3',
+        time: '2025-12-12 09:10:00',
+        status: 'partial',
+        hitCount: 6,
+        durationMs: 10500,
+        triggerType: 'schedule',
+        errorMessage: '部分数据源连接失败，已对可用数据执行（示例）'
+      },
+      {
+        id: '3-2',
+        taskId: '3',
+        time: '2025-12-11 09:10:05',
+        status: 'success',
+        hitCount: 3,
+        durationMs: 8800,
+        triggerType: 'schedule'
+      }
+    ]
+  };
 
   const sourceReportOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -311,6 +490,11 @@ const MonitoringManagement: React.FC = () => {
     });
     return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
   }, [allMonitorTasks]);
+
+  const currentExecutionLogs = useMemo(() => {
+    if (!executionLogTaskId) return [];
+    return executionLogsByTaskId[executionLogTaskId] || [];
+  }, [executionLogTaskId]);
 
   const applyTaskFilters = (tasks: MonitorTask[]) => {
     const keyword = filterTaskName.trim().toLowerCase();
@@ -480,27 +664,49 @@ const MonitoringManagement: React.FC = () => {
   }, [filterSchemeIds]);
 
   const reportOptionsByScheme: Record<string, Array<{ value: string; label: string }>> = {
+    // 用于创建页下拉选择的方案编码
     'scheme-001': [
       { value: 'report_001', label: 'CPU价格趋势分析报表' },
-      { value: 'report_003', label: 'CPU供应商价差报表' }
+      { value: 'report_003', label: 'CPU供应商价差分析报表' }
     ],
     'scheme-002': [
-      { value: 'report_002', label: '供应商协议价对比报表' },
-      { value: 'report_004', label: '协议价波动监控报表' }
+      { value: 'report_002', label: '供应商协议价对比监控报表' },
+      { value: 'report_004', label: '协议价波动预警报表' }
     ],
     'scheme-003': [
-      { value: 'report_005', label: '内存条价格趋势报表' }
+      { value: 'report_005', label: '内存条价格趋势监控报表' }
+    ],
+    // 对应比价方案列表页的 id（1/2/3），方便从“比价方案列表-创建监控任务”跳转后也能看到下拉数据
+    '1': [
+      { value: 'report_101', label: '华东耗材专题监控报表-价格视图' },
+      { value: 'report_102', label: '华东耗材专题监控报表-供应商视图' }
+    ],
+    '2': [
+      { value: 'report_201', label: '降价专项监控报表-价格对比' },
+      { value: 'report_202', label: '降价专项监控报表-执行进度' }
+    ],
+    '3': [
+      { value: 'report_301', label: '招采对标复盘监控报表' }
     ]
   };
 
   const currentSchemeId = Form.useWatch('schemeId', form);
+  const currentDeliveryType = Form.useWatch('deliveryType', form);
+  const currentSourceReportId = Form.useWatch('sourceReportId', form);
+  const currentSourceReportName = Form.useWatch('sourceReportName', form);
   const currentReportOptions = useMemo(() => {
     if (!currentSchemeId) return [];
     return reportOptionsByScheme[currentSchemeId] || [];
   }, [currentSchemeId]);
 
-  const isSchemeLocked = taskPageMode === 'edit' || taskPageMode === 'view' || !!reportContext.reportId;
+  const isSchemeLocked = taskPageMode === 'edit' || taskPageMode === 'view' || !!reportContext.reportId || isSchemeLockedFromEntry;
   const isReportLocked = taskPageMode === 'edit' || taskPageMode === 'view' || !!reportContext.reportId;
+
+  const schemeDisplayName = useMemo(() => {
+    if (reportContext.schemeName) return reportContext.schemeName;
+    if (!currentSchemeId) return '';
+    return schemeOptions.find(s => s.value === currentSchemeId)?.label || currentSchemeId;
+  }, [reportContext.schemeName, currentSchemeId]);
 
   const handleSchemeChangeForCreate = (schemeId: string) => {
     form.setFieldValue('schemeId', schemeId);
@@ -508,114 +714,110 @@ const MonitoringManagement: React.FC = () => {
     form.setFieldValue('sourceReportName', undefined);
   };
 
-  const dimensionFields: ReportFieldItem[] = [
-    { id: 'supplier', name: '供应商', type: 'dimension', description: '采购供应商主体/集团' },
-    { id: 'product', name: '物料编码', type: 'dimension', description: '监控对象的标准物料编码' },
-    { id: 'category', name: '产品类别', type: 'dimension', description: '如芯片、存储、整机等分类' },
-    { id: 'date', name: '采购日期', type: 'dimension', description: '按时间粒度拆分监控' },
-    { id: 'organization', name: '采购组织', type: 'dimension', description: '企业/子公司的采购主体' },
-    { id: 'brand', name: '品牌', type: 'dimension', description: '聚焦重点品牌或系列' }
-  ];
+  const reportTemplateLayoutByReportId: Record<string, LayoutDroppedItem[]> = {
+    report_001: [
+      { id: 'supplier', name: '供应商', type: 'dimension', position: 'row' },
+      { id: 'product', name: '物料编码', type: 'dimension', position: 'row' },
+      { id: 'date', name: '采购日期', type: 'dimension', position: 'column' },
+      { id: 'price', name: '含税价', type: 'metric', position: 'value' },
+      { id: 'diff_rate', name: '差异率', type: 'metric', position: 'value' }
+    ],
+    report_002: [
+      { id: 'supplier', name: '供应商', type: 'dimension', position: 'row' },
+      { id: 'category', name: '产品类别', type: 'dimension', position: 'row' },
+      { id: 'organization', name: '采购组织', type: 'dimension', position: 'column' },
+      { id: 'price', name: '含税价', type: 'metric', position: 'value' },
+      { id: 'diff_amount', name: '差异额', type: 'metric', position: 'value' }
+    ],
+    report_003: [
+      { id: 'supplier', name: '供应商', type: 'dimension', position: 'row' },
+      { id: 'product', name: '物料编码', type: 'dimension', position: 'row' },
+      { id: 'organization', name: '采购组织', type: 'dimension', position: 'column' },
+      { id: 'diff_rate', name: '差异率', type: 'metric', position: 'value' }
+    ],
+    report_004: [
+      { id: 'supplier', name: '供应商', type: 'dimension', position: 'row' },
+      { id: 'date', name: '采购日期', type: 'dimension', position: 'column' },
+      { id: 'price', name: '含税价', type: 'metric', position: 'value' }
+    ],
+    report_005: [
+      { id: 'product', name: '物料编码', type: 'dimension', position: 'row' },
+      { id: 'date', name: '采购日期', type: 'dimension', position: 'column' },
+      { id: 'price', name: '含税价', type: 'metric', position: 'value' }
+    ],
+    // 新增的示例报表模板（对应方案列表 id 1/2/3）
+    report_101: [
+      { id: 'org', name: '管理组织', type: 'dimension', position: 'row' },
+      { id: 'category', name: '耗材大类', type: 'dimension', position: 'row' },
+      { id: 'supplier', name: '供应商', type: 'dimension', position: 'column' },
+      { id: 'current_price', name: '当前价格', type: 'metric', position: 'value' },
+      { id: 'baseline_price', name: '基准价格', type: 'metric', position: 'value' },
+      { id: 'price_diff_rate', name: '价格差异率', type: 'metric', position: 'value' }
+    ],
+    report_102: [
+      { id: 'supplier', name: '供应商', type: 'dimension', position: 'row' },
+      { id: 'product', name: '物料编码', type: 'dimension', position: 'row' },
+      { id: 'org', name: '采购组织', type: 'dimension', position: 'column' },
+      { id: 'current_price', name: '当前价格', type: 'metric', position: 'value' },
+      { id: 'group_price', name: '集团价格', type: 'metric', position: 'value' }
+    ],
+    report_201: [
+      { id: 'product', name: '物料编码', type: 'dimension', position: 'row' },
+      { id: 'supplier', name: '供应商', type: 'dimension', position: 'row' },
+      { id: 'month', name: '月份', type: 'dimension', position: 'column' },
+      { id: 'current_price', name: '当前价格', type: 'metric', position: 'value' },
+      { id: 'baseline_price', name: '基准价格', type: 'metric', position: 'value' },
+      { id: 'price_diff_rate', name: '价格差异率', type: 'metric', position: 'value' }
+    ],
+    report_202: [
+      { id: 'org', name: '管理组织', type: 'dimension', position: 'row' },
+      { id: 'project', name: '专项名称', type: 'dimension', position: 'row' },
+      { id: 'phase', name: '阶段', type: 'dimension', position: 'column' },
+      { id: 'finished_rate', name: '执行完成率', type: 'metric', position: 'value' }
+    ],
+    report_301: [
+      { id: 'project', name: '项目名称', type: 'dimension', position: 'row' },
+      { id: 'org', name: '招采组织', type: 'dimension', position: 'row' },
+      { id: 'bid_round', name: '轮次', type: 'dimension', position: 'column' },
+      { id: 'bid_price', name: '中标价', type: 'metric', position: 'value' },
+      { id: 'baseline_price', name: '基准价', type: 'metric', position: 'value' },
+      { id: 'price_diff_rate', name: '价格差异率', type: 'metric', position: 'value' }
+    ]
+  };
 
-  const metricFields: ReportFieldItem[] = [
-    { id: 'price', name: '含税价', type: 'metric', description: '含税采购价格' },
-    { id: 'taxfree_price', name: '不含税价', type: 'metric', description: '去税后采购价格' },
-    { id: 'diff_rate', name: '差异率', type: 'metric', description: '与基准价的差异百分比' },
-    { id: 'diff_amount', name: '差异额', type: 'metric', description: '与基准价的金额差' },
-    { id: 'quantity', name: '采购数量', type: 'metric', description: '采购数量/规模' }
-  ];
-
-  const calculatedFields: ReportFieldItem[] = [
-    { id: 'calc_compare_gap', name: '价差率', type: 'calculated', description: '(含税价-市场价)/市场价' },
-    { id: 'calc_std_dev', name: '价格波动指数', type: 'calculated', description: '以历史价格衡量波动' },
-    { id: 'calc_rank', name: '价格排名', type: 'calculated', description: '同类产品中的价格排名' }
-  ];
-
-  const baselineFields: ReportFieldItem[] = [
-    { id: 'baseline_group', name: '集团基准价', type: 'baseline', description: '集团协议/框架价' },
-    { id: 'baseline_history', name: '历史均价', type: 'baseline', description: '历史采购平均价格' },
-    { id: 'baseline_market', name: '市场监测价', type: 'baseline', description: '市场/行业公开价格' }
-  ];
-
-  const treeData = [
-    {
-      key: 'dimension',
-      title: '比对维度',
-      children: dimensionFields.map(item => ({
-        key: item.id,
-        title: item.name,
-        isLeaf: true,
-        itemData: item
-      }))
-    },
-    {
-      key: 'metric',
-      title: '业务指标',
-      children: metricFields.map(item => ({
-        key: item.id,
-        title: item.name,
-        isLeaf: true,
-        itemData: item
-      }))
-    },
-    {
-      key: 'calculated',
-      title: '计算指标',
-      children: calculatedFields.map(item => ({
-        key: item.id,
-        title: item.name,
-        isLeaf: true,
-        itemData: item
-      }))
-    },
-    {
-      key: 'baseline',
-      title: '基准指标',
-      children: baselineFields.map(item => ({
-        key: item.id,
-        title: item.name,
-        isLeaf: true,
-        itemData: item
-      }))
+  useEffect(() => {
+    if (taskPageMode !== 'create') return;
+    if (currentDeliveryType !== 'report_template') return;
+    if (!currentSourceReportId) {
+      setDroppedItems([]);
+      return;
     }
-  ];
 
-  const getUsedFieldIds = () => droppedItems.map(item => item.id);
+    const nextLayout = reportTemplateLayoutByReportId[currentSourceReportId] || [];
+    setDroppedItems(nextLayout);
+  }, [taskPageMode, currentDeliveryType, currentSourceReportId]);
 
-  const handleFieldDragStart = (item: ReportFieldItem) => (e: React.DragEvent<HTMLDivElement>) => {
-    setDraggedItem(item);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleFieldDragEnd = () => {
-    setDraggedItem(null);
-  };
-
-  const renderTreeNode = (nodeData: any) => {
-    const usedIds = getUsedFieldIds();
-    const isLeaf = nodeData.isLeaf;
-    const item: ReportFieldItem | undefined = nodeData.itemData;
-    const isUsed = item && usedIds.includes(item.id);
-
-    return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          height: 24,
-          padding: '0 8px',
-          borderRadius: 4,
-          cursor: isLeaf && !isUsed ? 'grab' : 'default',
-          opacity: isUsed ? 0.5 : 1
-        }}
-        draggable={isLeaf && !isUsed}
-        onDragStart={item ? handleFieldDragStart(item) : undefined}
-        onDragEnd={handleFieldDragEnd}
-      >
-        <span style={{ fontSize: 12, color: isUsed ? '#999' : '#555' }}>{nodeData.title}</span>
-      </div>
-    );
-  };
+  // 基于当前报表模板的布局，生成只读字段设置数据，用于“报表设置”弹窗
+  useEffect(() => {
+    if (!currentSourceReportId) {
+      setFieldSettings([]);
+      return;
+    }
+    const layout = reportTemplateLayoutByReportId[currentSourceReportId] || [];
+    const next: ReportFieldSettingItem[] = layout.map((item, index) => ({
+      key: `${item.position}_${item.id}_${index}`,
+      label: item.name,
+      group: item.type === 'dimension' ? '维度' : '指标',
+      area:
+        item.position === 'row'
+          ? 'rows'
+          : item.position === 'column'
+            ? 'columns'
+            : 'metrics',
+      enabled: true
+    }));
+    setFieldSettings(next);
+  }, [currentSourceReportId]);
 
   // 监控可用字段（模拟数据，供后续扩展为查询条件等）
   const availableFields: FieldMetadata[] = [
@@ -631,34 +833,11 @@ const MonitoringManagement: React.FC = () => {
     { id: 'purchase_quantity', name: '采购数量', type: 'metric', componentType: 'numberRange', placeholder: '设置数量区间' }
   ];
 
-  const handleConfigDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-  };
-
-  const handleDropToPosition = (position: LayoutPosition) => (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (!draggedItem) return;
-    setDroppedItems(prev => {
-      if (prev.some(item => item.id === draggedItem.id && item.position === position)) {
-        return prev;
-      }
-      return [
-        ...prev,
-        {
-          id: draggedItem.id,
-          name: draggedItem.name,
-          type: draggedItem.type,
-          position
-        }
-      ];
-    });
-  };
-
-  const removeLayoutItem = (id: string, position: LayoutPosition) => {
-    setDroppedItems(prev => prev.filter(item => !(item.id === id && item.position === position)));
-  };
-
-  const renderConfigRow = (label: string, position: LayoutPosition, color: 'blue' | 'green' | 'orange') => {
+  const renderConfigRow = (
+    label: string,
+    position: LayoutPosition,
+    color: 'blue' | 'green' | 'orange'
+  ) => {
     const items = droppedItems.filter(item => item.position === position);
     const colorStyle = {
       blue: { border: '#91caff', label: '#1677ff' },
@@ -676,8 +855,6 @@ const MonitoringManagement: React.FC = () => {
           borderBottom: '1px solid #f0f0f0',
           gap: 12
         }}
-        onDragOver={handleConfigDragOver}
-        onDrop={handleDropToPosition(position)}
       >
         <div style={{ width: 80, color: colorStyle.label, fontWeight: 500 }}>{label}</div>
         <div
@@ -694,17 +871,12 @@ const MonitoringManagement: React.FC = () => {
           }}
         >
           {items.length === 0 ? (
-            <Text type="secondary">将字段拖拽到此处</Text>
+            <Text type="secondary">暂无布局配置</Text>
           ) : (
             items.map(item => (
               <Tag
                 key={`${position}-${item.id}`}
                 color={color}
-                closable
-                onClose={e => {
-                  e.preventDefault();
-                  removeLayoutItem(item.id, position);
-                }}
               >
                 {item.name}
               </Tag>
@@ -781,52 +953,90 @@ const MonitoringManagement: React.FC = () => {
                 </Form.Item>
               </Col>
               <Col span={8}>
-                <Form.Item
-                  name="schemeId"
-                  label="比价方案"
-                  rules={[{ required: true, message: '请选择比价方案' }]}
-                >
-                  <Select
-                    placeholder="选择比价方案"
-                    showSearch
-                    optionFilterProp="children"
-                    disabled={isSchemeLocked}
-                    onChange={(val: string) => {
-                      if (isSchemeLocked) return;
-                      handleSchemeChangeForCreate(val);
-                    }}
+                {isSchemeLockedFromEntry ? (
+                  <>
+                    <Form.Item
+                      name="schemeId"
+                      rules={[{ required: true, message: '请选择比价方案' }]}
+                      hidden
+                    >
+                      <Input />
+                    </Form.Item>
+                    <Form.Item label="比价方案" required>
+                      <Input value={schemeDisplayName} disabled />
+                    </Form.Item>
+                  </>
+                ) : (
+                  <Form.Item
+                    name="schemeId"
+                    label="比价方案"
+                    rules={[{ required: true, message: '请选择比价方案' }]}
                   >
-                    {schemeOptions.map(option => (
-                      <Option key={option.value} value={option.value}>
-                        {option.label}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
+                    <Select
+                      placeholder="选择比价方案"
+                      showSearch
+                      optionFilterProp="children"
+                      disabled={isSchemeLocked}
+                      onChange={(val: string) => {
+                        if (isSchemeLocked) return;
+                        handleSchemeChangeForCreate(val);
+                      }}
+                    >
+                      {schemeOptions.map(option => (
+                        <Option key={option.value} value={option.value}>
+                          {option.label}
+                        </Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                )}
               </Col>
 
               <Col span={8}>
                 <Form.Item
-                  name="sourceReportId"
-                  label="来源报表"
-                  rules={[{ required: true, message: '请选择来源报表' }]}
+                  name="deliveryType"
+                  label="交付类型"
+                  rules={[{ required: true, message: '请选择交付类型' }]}
+                  initialValue="report_template"
                 >
                   <Select
-                    placeholder={currentSchemeId ? '选择来源报表' : '请先选择比价方案'}
-                    disabled={isReportLocked || !currentSchemeId}
-                    options={currentReportOptions}
-                    onChange={(_val: string, option) => {
-                      const name = (option as any)?.label;
-                      form.setFieldValue('sourceReportName', typeof name === 'string' ? name : undefined);
+                    placeholder="选择交付类型"
+                    options={[{ value: 'report_template', label: '报表模板' }]}
+                    onChange={() => {
+                      form.setFieldValue('sourceReportId', undefined);
+                      form.setFieldValue('sourceReportName', undefined);
                     }}
                   />
-                </Form.Item>
-                <Form.Item name="sourceReportName" hidden>
-                  <Input />
                 </Form.Item>
               </Col>
             </Row>
             <Row gutter={16}>
+              <Col span={8}>
+                {currentDeliveryType === 'report_template' ? (
+                  <>
+                    <Form.Item
+                      name="sourceReportId"
+                      label="报表模板"
+                      rules={[{ required: true, message: '请选择报表模板' }]}
+                    >
+                      <Select
+                        placeholder={currentSchemeId ? '选择报表模板' : '请先选择比价方案'}
+                        disabled={isReportLocked || !currentSchemeId}
+                        options={currentReportOptions}
+                        onChange={(_val: string, option) => {
+                          const name = (option as any)?.label;
+                          form.setFieldValue('sourceReportName', typeof name === 'string' ? name : undefined);
+                        }}
+                      />
+                    </Form.Item>
+                    <Form.Item name="sourceReportName" hidden>
+                      <Input />
+                    </Form.Item>
+                  </>
+                ) : (
+                  <div />
+                )}
+              </Col>
               <Col span={8}>
                 <Form.Item
                   name="severity"
@@ -835,7 +1045,6 @@ const MonitoringManagement: React.FC = () => {
                 >
                   <Select placeholder="选择预警等级">
                     <Option value="low">提示</Option>
-                    <Option value="medium">重要</Option>
                     <Option value="high">严重</Option>
                     <Option value="critical">紧急</Option>
                   </Select>
@@ -851,7 +1060,6 @@ const MonitoringManagement: React.FC = () => {
                   <Switch checkedChildren="启用" unCheckedChildren="停用" />
                 </Form.Item>
               </Col>
-              <Col span={8} />
             </Row>
           </Card>
 
@@ -872,47 +1080,243 @@ const MonitoringManagement: React.FC = () => {
                   });
                 }}
               >
-                结果预览
+                监控结果预览
               </Button>
             }
           >
-            <Row gutter={0} style={{ minHeight: 400 }}>
-              {/* 左侧：可用字段 */}
-              <Col span={8} style={{ borderRight: '1px solid #f0f0f0', padding: 16 }}>
-                <Text strong style={{ marginBottom: 8, display: 'block' }}>可用字段</Text>
-                <Tree
-                  showLine={false}
-                  showIcon={false}
-                  defaultExpandAll
-                  expandedKeys={expandedKeys}
-                  onExpand={keys => setExpandedKeys(keys as string[])}
-                  treeData={treeData}
-                  titleRender={renderTreeNode}
+            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <Text strong style={{ marginBottom: 8, display: 'block' }}>监控范围</Text>
+                <QueryConditionsPanel
+                  conditions={monitorConditions}
+                  onConditionsChange={setMonitorConditions}
+                  availableFields={availableFields}
+                  predefinedConditions={[]}
                 />
-              </Col>
+              </div>
 
-              {/* 右侧：查询条件 + 布局配置 */}
-              <Col span={16} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <div>
-                  <Text strong style={{ marginBottom: 8, display: 'block' }}>监控范围</Text>
-                  <QueryConditionsPanel
-                    conditions={monitorConditions}
-                    onConditionsChange={setMonitorConditions}
-                    availableFields={availableFields}
-                    predefinedConditions={[]}
-                  />
+              <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    marginBottom: 8,
+                    gap: 12
+                  }}
+                >
+                  <Tooltip
+                    title={
+                      currentSourceReportId
+                        ? '查看报表模板的字段与布局配置（只读）'
+                        : '请先选择报表模板'
+                    }
+                  >
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        if (!currentSourceReportId) {
+                          message.warning('请先选择报表模板');
+                          return;
+                        }
+                        setReportSettingsTab('fields');
+                        setReportSettingsVisible(true);
+                      }}
+                    >
+                      报表设置
+                    </Button>
+                  </Tooltip>
+                  <Text strong>报表布局配置</Text>
                 </div>
-
-                <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
-                  <Text strong style={{ marginBottom: 8, display: 'block' }}>布局配置</Text>
-                  {renderConfigRow('行维度', 'row', 'blue')}
-                  {renderConfigRow('列维度', 'column', 'green')}
-                  {renderConfigRow('监控指标', 'value', 'orange')}
-                </div>
-
-              </Col>
-            </Row>
+                {renderConfigRow('行维度', 'row', 'blue')}
+                {renderConfigRow('列维度', 'column', 'green')}
+                {renderConfigRow('指标', 'value', 'orange')}
+              </div>
+            </div>
           </Card>
+
+          <Modal
+            title="报表设置"
+            open={reportSettingsVisible}
+            onCancel={() => setReportSettingsVisible(false)}
+            footer={[
+              <Button key="close" type="primary" onClick={() => setReportSettingsVisible(false)}>
+                关闭
+              </Button>
+            ]}
+            width={980}
+          >
+            <div style={{ marginBottom: 12 }}>
+              <Text type="secondary">报表模板：</Text>
+              <Text strong style={{ marginLeft: 4 }}>
+                {currentSourceReportName || currentSourceReportId || '未选择'}
+              </Text>
+            </div>
+            <Tabs
+              activeKey={reportSettingsTab}
+              onChange={(k) => setReportSettingsTab(k as 'fields' | 'totals')}
+              items={[
+                {
+                  key: 'fields',
+                  label: '字段',
+                  children: (
+                    <div style={{ display: 'flex', gap: 16 }}>
+                      {([
+                        { title: '行字段显示设置', area: 'rows' as const },
+                        { title: '列字段显示设置', area: 'columns' as const },
+                        { title: '指标字段显示设置', area: 'metrics' as const }
+                      ]).map((block) => {
+                        const data = fieldSettings.filter((f) => f.area === block.area);
+                        return (
+                          <div
+                            key={block.area}
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              border: '1px solid #f0f0f0',
+                              borderRadius: 8,
+                              background: '#fff',
+                              overflow: 'hidden'
+                            }}
+                          >
+                            <div
+                              style={{
+                                padding: '10px 12px',
+                                borderBottom: '1px solid #f0f0f0',
+                                background: '#fafafa'
+                              }}
+                            >
+                              <Text strong>{block.title}</Text>
+                            </div>
+                            <div style={{ padding: 12 }}>
+                              <Table
+                                size="small"
+                                rowKey={(r: ReportFieldSettingItem) => r.key}
+                                dataSource={data}
+                                pagination={false}
+                                scroll={{ y: 260 }}
+                                columns={[
+                                  {
+                                    title: '字段分组',
+                                    dataIndex: 'group',
+                                    key: 'group',
+                                    width: 120,
+                                    render: (v: string) => <Text type="secondary">{v || '-'}</Text>
+                                  },
+                                  {
+                                    title: '字段',
+                                    dataIndex: 'label',
+                                    key: 'label',
+                                    render: (v: string) => <Text>{v}</Text>
+                                  },
+                                  {
+                                    title: '显示',
+                                    dataIndex: 'enabled',
+                                    key: 'enabled',
+                                    width: 80,
+                                    align: 'right' as const,
+                                    render: (_: any, record: ReportFieldSettingItem) => (
+                                      <Switch size="small" checked={record.enabled} disabled />
+                                    )
+                                  }
+                                ]}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                },
+                {
+                  key: 'totals',
+                  label: '汇总',
+                  children: (
+                    <div style={{ paddingTop: 8 }}>
+                      <div
+                        style={{
+                          border: '1px solid #f0f0f0',
+                          borderRadius: 8,
+                          padding: '16px',
+                          background: '#fafafa'
+                        }}
+                      >
+                        <div style={{ marginBottom: 16 }}>
+                          <Text strong style={{ fontSize: 14 }}>
+                            总计行列配置
+                          </Text>
+                        </div>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '12px 0'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                            <Text style={{ width: 72 }}>行总计</Text>
+                            <Radio.Group value={rowTotalPosition} disabled>
+                              <Radio.Button value="top">顶部</Radio.Button>
+                              <Radio.Button value="bottom">底部</Radio.Button>
+                            </Radio.Group>
+                          </div>
+                          <Switch checked={rowTotalEnabled} disabled />
+                        </div>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '12px 0',
+                            borderTop: '1px solid #f5f5f5'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                            <Text style={{ width: 72 }}>列总计</Text>
+                            <Radio.Group value={colTotalPosition} disabled>
+                              <Radio.Button value="left">左侧</Radio.Button>
+                              <Radio.Button value="right">右侧</Radio.Button>
+                            </Radio.Group>
+                          </div>
+                          <Switch checked={colTotalEnabled} disabled />
+                        </div>
+
+                        <div style={{ marginTop: 16 }}>
+                          <Text strong style={{ fontSize: 14 }}>
+                            汇总指标
+                          </Text>
+                          <div style={{ marginTop: 12 }}>
+                            {totalMetricSettings.map((metric) => (
+                              <div
+                                key={metric.key}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '8px 0',
+                                  borderTop: '1px solid #f5f5f5'
+                                }}
+                              >
+                                <div>
+                                  <Text>{metric.label}</Text>
+                                  <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                                    {metric.agg === 'avg' ? '平均值' : metric.agg}
+                                  </Text>
+                                </div>
+                                <Switch checked={metric.enabled} disabled />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+              ]}
+            />
+          </Modal>
 
           {/* 3. 调度设置 */}
           <Card title="调度设置" style={{ marginBottom: 16 }}>
@@ -1145,11 +1549,22 @@ const MonitoringManagement: React.FC = () => {
       }
     };
 
+    const headerText = previewAlertRecord
+      ? '监控结果预览 - 预警快照（示例数据，非最新）'
+      : '监控结果预览 - 基于当前配置的示例数据';
+
     return (
       <div style={{ padding: 24, background: '#f5f5f5', minHeight: '100vh' }}>
         {/* 顶部标题栏 */}
         <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text type="secondary">监控结果预览 - 基于当前配置的示例数据</Text>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <Text type="secondary">{headerText}</Text>
+            {previewAlertRecord && (
+              <Text type="secondary" style={{ marginTop: 4 }}>
+                预警任务：{previewAlertRecord.taskName}，预警时间：{previewAlertRecord.timestamp}，命中记录数：{previewAlertRecord.hitCount}
+              </Text>
+            )}
+          </div>
           <Space>
             <Button onClick={() => setViewMode('create')}>返回编辑</Button>
             <Button type="primary">导出</Button>
@@ -1226,16 +1641,29 @@ const MonitoringManagement: React.FC = () => {
       key: 'schemeName'
     },
     {
-      title: '来源报表',
+      title: '交付类型',
+      key: 'deliveryType',
+      render: () => <Text>报表模板</Text>
+    },
+    {
+      title: '报表模板',
       dataIndex: 'sourceReportName',
       key: 'sourceReportName',
       render: (text: string, record: MonitorTask) => <Text>{text || record.sourceReportId || '-'}</Text>
     },
     {
-      title: '规则概要',
-      dataIndex: 'ruleSummary',
-      key: 'ruleSummary',
-      render: (text: string) => <Text type="secondary">{text}</Text>
+      title: '最近执行结果',
+      dataIndex: 'lastRunStatus',
+      key: 'lastRunStatus',
+      render: (_: any, record: MonitorTask) => {
+        const isSuccess = record.lastRunStatus === 'success';
+        const tag = <Tag color={isSuccess ? 'green' : 'red'}>{isSuccess ? '成功' : '失败'}</Tag>;
+        return record.lastRunError ? (
+          <Tooltip title={record.lastRunError}>{tag}</Tooltip>
+        ) : (
+          tag
+        );
+      }
     },
     {
       title: '执行频率',
@@ -1262,10 +1690,13 @@ const MonitoringManagement: React.FC = () => {
       render: (record: MonitorTask) => (
         <Space>
           <Button type="link" size="small" onClick={() => handleViewResult(record)}>
-            结果预览
+            监控结果预览
           </Button>
           <Tooltip title="查看详情">
             <Button type="text" icon={<EyeOutlined />} onClick={() => handleViewTaskDetail(record)} />
+          </Tooltip>
+          <Tooltip title="执行日志">
+            <Button type="text" icon={<Activity className="h-4 w-4" />} onClick={() => handleViewExecutionLog(record)} />
           </Tooltip>
           <Tooltip title="编辑">
             <Button type="text" icon={<EditOutlined />} onClick={() => handleEditTask(record)} />
@@ -1307,12 +1738,6 @@ const MonitoringManagement: React.FC = () => {
       title: '监控任务',
       dataIndex: 'taskName',
       key: 'taskName'
-    },
-    {
-      title: '规则概要',
-      dataIndex: 'ruleSummary',
-      key: 'ruleSummary',
-      render: (text: string) => <Text type="secondary">{text}</Text>
     },
     {
       title: '命中记录数',
@@ -1359,8 +1784,8 @@ const MonitoringManagement: React.FC = () => {
       key: 'actions',
       render: (record: AlertRecord) => (
         <Space>
-          <Button type="link" size="small" onClick={() => handleViewAlertDetail(record)}>
-            查看详情
+          <Button type="link" size="small" onClick={() => handlePreviewAlertRecord(record)}>
+            查看预警记录
           </Button>
           <Button type="link" size="small" onClick={() => handleViewNotificationDetail(record)}>
             查看推送结果
@@ -1497,13 +1922,19 @@ const MonitoringManagement: React.FC = () => {
                   { label: '已暂停', value: 'disabled' }
                 ]}
               />
-              <Button
-                onClick={() => setSchemeFilterVisible(true)}
-              >
-                比价方案{filterSchemeIds.length > 0 ? `（${filterSchemeIds.length}）` : ''}
-              </Button>
               <Select
-                placeholder="来源报表"
+                placeholder="比价方案"
+                allowClear
+                style={{ width: 200 }}
+                value={filterSchemeIds[0]}
+                onChange={(v) => {
+                  // 简化为单选：内部仍然用 filterSchemeIds 参与过滤
+                  setFilterSchemeIds(v ? [v as string] : []);
+                }}
+                options={schemeOptions}
+              />
+              <Select
+                placeholder="报表模板"
                 allowClear
                 style={{ width: 240 }}
                 value={filterSourceReportId}
@@ -1517,7 +1948,7 @@ const MonitoringManagement: React.FC = () => {
             </Space>
             <Space>
               {filterSourceReportId && (
-                <Text type="secondary">已按来源报表筛选：{filterSourceReportName || filterSourceReportId}</Text>
+                <Text type="secondary">已按报表模板筛选：{filterSourceReportName || filterSourceReportId}</Text>
               )}
               {filterSchemeIds.length > 0 && (
                 <Tooltip title={schemeFilterSummary}>
@@ -1560,78 +1991,30 @@ const MonitoringManagement: React.FC = () => {
       </Card>
 
       <Modal
-        title="选择比价方案"
-        open={schemeFilterVisible}
-        onCancel={() => setSchemeFilterVisible(false)}
-        onOk={() => setSchemeFilterVisible(false)}
-        width={520}
-      >
-        <Checkbox.Group
-          style={{ width: '100%' }}
-          value={filterSchemeIds}
-          onChange={(vals) => setFilterSchemeIds(vals as string[])}
-        >
-          <Space direction="vertical" style={{ width: '100%' }}>
-            {schemeOptions.map(s => (
-              <Checkbox key={s.value} value={s.value}>
-                {s.label}
-              </Checkbox>
-            ))}
-          </Space>
-        </Checkbox.Group>
-      </Modal>
-
-      <Modal
-        open={alertDetailVisible}
-        title="预警详情"
+        open={executionLogVisible}
+        title="执行日志"
         footer={null}
-        onCancel={() => setAlertDetailVisible(false)}
+        onCancel={() => setExecutionLogVisible(false)}
+        width={860}
       >
-        {alertDetail && (
+        {executionLogTaskId ? (
           <Space direction="vertical" style={{ width: '100%' }}>
             <div>
               <Text type="secondary">监控任务：</Text>
-              <Text strong>{alertDetail.taskName}</Text>
+              <Text strong>
+                {allMonitorTasks.find(t => t.id === executionLogTaskId)?.name || executionLogTaskId}
+              </Text>
             </div>
-            <div>
-              <Text type="secondary">规则概要：</Text>
-              <Text>{alertDetail.ruleSummary}</Text>
-            </div>
-            <div>
-              <Text type="secondary">命中信息：</Text>
-            </div>
-            <Space wrap>
-              {alertDetail.dimensionValues.map(value => (
-                <Tag key={`${alertDetail.id}-detail-${value}`} color="blue">
-                  {value}
-                </Tag>
-              ))}
-              {alertDetail.dimensionValues.length === 0 && <Text type="secondary">-</Text>}
-            </Space>
-            <div>
-              <Text type="secondary">命中记录数：</Text>
-              <Text>{alertDetail.hitCount}</Text>
-            </div>
-            <div>
-              <Text type="secondary">严重程度：</Text>
-              <Text>{alertDetail.severity}</Text>
-            </div>
-            <div>
-              <Text type="secondary">时间：</Text>
-              <Text>{alertDetail.timestamp}</Text>
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <Button
-                type="primary"
-                block
-                onClick={() => {
-                  message.info('异常数据报表快照功能即将上线，当前为占位入口');
-                }}
-              >
-                查看异常数据报表快照
-              </Button>
-            </div>
+            <Table
+              columns={executionLogColumns}
+              dataSource={currentExecutionLogs}
+              rowKey="id"
+              pagination={{ pageSize: 5 }}
+              size="small"
+            />
           </Space>
+        ) : (
+          <Text type="secondary">暂无执行记录</Text>
         )}
       </Modal>
 
