@@ -14,7 +14,6 @@ import {
   Tooltip,
   Table,
   Statistic,
-  Badge,
   Radio,
   Switch,
   Modal,
@@ -159,8 +158,9 @@ const MonitoringManagement: React.FC = () => {
         const config: Record<ExecutionLogItem['status'], { color: string; text: string }> = {
           success: { color: 'green', text: '成功' },
           failed: { color: 'red', text: '失败' },
-          partial: { color: 'orange', text: '部分成功' },
-          skipped: { color: 'default', text: '已跳过' }
+          // "partial" 与 "skipped" 统一按失败展示，避免出现“部分成功/已跳过”等中间状态文案
+          partial: { color: 'red', text: '失败' },
+          skipped: { color: 'red', text: '失败' }
         };
         const { color, text } = config[status];
         return <Tag color={color}>{text}</Tag>;
@@ -173,19 +173,7 @@ const MonitoringManagement: React.FC = () => {
       render: (count: number) => <Text>{count}</Text>
     },
     {
-      title: '耗时',
-      dataIndex: 'durationMs',
-      key: 'durationMs',
-      render: (ms: number) => <Text>{(ms / 1000).toFixed(2)} 秒</Text>
-    },
-    {
-      title: '触发方式',
-      dataIndex: 'triggerType',
-      key: 'triggerType',
-      render: (type: ExecutionLogItem['triggerType']) => (type === 'schedule' ? '定时' : '手动')
-    },
-    {
-      title: '异常信息',
+      title: '说明',
       dataIndex: 'errorMessage',
       key: 'errorMessage',
       render: (text: string | undefined) =>
@@ -256,10 +244,9 @@ const MonitoringManagement: React.FC = () => {
   // 可用模板变量
   const templateVariables = [
     { key: 'taskName', label: '任务名称' },
-    { key: 'severity', label: '预警等级' },
+    { key: 'alarmLevelName', label: '预警等级' },
     { key: 'hitCount', label: '命中记录数' },
     { key: 'time', label: '触发时间' },
-    { key: 'schemeName', label: '比价方案' },
     { key: 'downloadUrl', label: '下载地址' }
   ];
 
@@ -1425,19 +1412,19 @@ const MonitoringManagement: React.FC = () => {
                     <Form.Item
                       name="alertNotificationTitle"
                       label="预警消息标题"
-                      initialValue="【监控预警】{taskName} 发现异常"
+                      initialValue="【监控预警】{taskName} 触发预警"
                       required={hasReceivers}
                       rules={hasReceivers ? [{ required: true, message: '请填写预警消息标题' }] : []}
                     >
                       <Input
-                        placeholder="如：{taskName} 触发{severity}预警"
+                        placeholder="如：{taskName} 于 {time} 触发{severity}预警"
                         onFocus={() => setActiveInputField('alertTitle')}
                       />
                     </Form.Item>
                     <Form.Item
                       name="alertNotificationDescription"
                       label="预警消息内容"
-                      initialValue="任务 {taskName} 触发 {severity} 预警，命中 {hitCount} 条记录。"
+                      initialValue="任务 {taskName} 于 {time} 触发预警，本次命中 {hitCount} 条记录。可通过 {downloadUrl} 下载相关数据。"
                       required={hasReceivers}
                       rules={hasReceivers ? [{ required: true, message: '请输入消息内容' }] : []}
                     >
@@ -1609,16 +1596,34 @@ const MonitoringManagement: React.FC = () => {
       title: '任务名称',
       dataIndex: 'name',
       key: 'name',
-      render: (text: string, record: MonitorTask) => (
-        <Space>
-          <Text strong>{text}</Text>
-          {record.enabled ? (
-            <Badge status="success" text="运行中" />
-          ) : (
-            <Badge status="default" text="已暂停" />
-          )}
-        </Space>
+      render: (text: string) => (
+        <Text strong>{text}</Text>
       )
+    },
+    {
+      title: '状态',
+      key: 'enabled',
+      render: (record: MonitorTask) => (
+        <Tag color={record.enabled ? 'green' : 'red'}>
+          {record.enabled ? '启用' : '停用'}
+        </Tag>
+      )
+    },
+    {
+      title: '比价方案',
+      dataIndex: 'schemeName',
+      key: 'schemeName'
+    },
+    {
+      title: '交付类型',
+      key: 'deliveryType',
+      render: () => <Text>报表模板</Text>
+    },
+    {
+      title: '报表模板',
+      dataIndex: 'sourceReportName',
+      key: 'sourceReportName',
+      render: (text: string, record: MonitorTask) => <Text>{text || record.sourceReportId || '-'} </Text>
     },
     {
       title: '预警等级',
@@ -1636,20 +1641,9 @@ const MonitoringManagement: React.FC = () => {
       }
     },
     {
-      title: '比价方案',
-      dataIndex: 'schemeName',
-      key: 'schemeName'
-    },
-    {
-      title: '交付类型',
-      key: 'deliveryType',
-      render: () => <Text>报表模板</Text>
-    },
-    {
-      title: '报表模板',
-      dataIndex: 'sourceReportName',
-      key: 'sourceReportName',
-      render: (text: string, record: MonitorTask) => <Text>{text || record.sourceReportId || '-'}</Text>
+      title: '最近执行时间',
+      dataIndex: 'lastCheck',
+      key: 'lastCheck'
     },
     {
       title: '最近执行结果',
@@ -1664,25 +1658,6 @@ const MonitoringManagement: React.FC = () => {
           tag
         );
       }
-    },
-    {
-      title: '执行频率',
-      dataIndex: 'scheduleSummary',
-      key: 'scheduleSummary',
-      render: (text: string) => <Text>{text}</Text>
-    },
-    {
-      title: '近一月预警数',
-      dataIndex: 'monthlyAlertCount',
-      key: 'monthlyAlertCount',
-      render: (count: number) => (
-        <Badge count={count} showZero color={count > 0 ? 'red' : 'gray'} />
-      )
-    },
-    {
-      title: '最近执行时间',
-      dataIndex: 'lastCheck',
-      key: 'lastCheck'
     },
     {
       title: '操作',
@@ -1701,7 +1676,7 @@ const MonitoringManagement: React.FC = () => {
           <Tooltip title="编辑">
             <Button type="text" icon={<EditOutlined />} onClick={() => handleEditTask(record)} />
           </Tooltip>
-          <Tooltip title={record.enabled ? "暂停" : "启动"}>
+          <Tooltip title={record.enabled ? '暂停' : '启动'}>
             <Button
               type="text"
               icon={record.enabled ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
@@ -1810,7 +1785,7 @@ const MonitoringManagement: React.FC = () => {
       }
     },
     {
-      title: '目标',
+      title: '员工',
       dataIndex: 'target',
       key: 'target'
     },
@@ -1925,6 +1900,11 @@ const MonitoringManagement: React.FC = () => {
               <Select
                 placeholder="比价方案"
                 allowClear
+                showSearch
+                optionFilterProp="label"
+                filterOption={(input, option) =>
+                  (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
+                }
                 style={{ width: 200 }}
                 value={filterSchemeIds[0]}
                 onChange={(v) => {
@@ -1936,6 +1916,11 @@ const MonitoringManagement: React.FC = () => {
               <Select
                 placeholder="报表模板"
                 allowClear
+                showSearch
+                optionFilterProp="label"
+                filterOption={(input, option) =>
+                  (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
+                }
                 style={{ width: 240 }}
                 value={filterSourceReportId}
                 onChange={(v, option) => {
@@ -2026,23 +2011,13 @@ const MonitoringManagement: React.FC = () => {
         width={640}
       >
         {notificationDetailRecord && (
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <div>
-              <Text type="secondary">监控任务：</Text>
-              <Text strong>{notificationDetailRecord.taskName}</Text>
-            </div>
-            <div>
-              <Text type="secondary">规则概要：</Text>
-              <Text>{notificationDetailRecord.ruleSummary}</Text>
-            </div>
-            <Table
-              columns={notificationColumns}
-              dataSource={notificationDetailRecord.notifications}
-              rowKey="id"
-              pagination={false}
-              size="small"
-            />
-          </Space>
+          <Table
+            columns={notificationColumns}
+            dataSource={notificationDetailRecord.notifications}
+            rowKey="id"
+            pagination={false}
+            size="small"
+          />
         )}
       </Modal>
     </div>

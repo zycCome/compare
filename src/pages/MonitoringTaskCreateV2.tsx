@@ -93,10 +93,11 @@ const MonitoringTaskCreateV2: React.FC = () => {
 
   const templateVariables = [
     { key: 'taskName', label: '任务名称' },
-    { key: 'severity', label: '预警等级' },
+    { key: 'alarmLevelName', label: '预警等级' },
     { key: 'hitCount', label: '命中记录数' },
     { key: 'time', label: '触发时间' },
-    { key: 'schemeName', label: '比价方案' }
+    { key: 'downloadUrl', label: '下载地址' },
+    // 去掉比价方案变量
   ];
 
   const insertVariable = (varKey: string) => {
@@ -520,12 +521,12 @@ const MonitoringTaskCreateV2: React.FC = () => {
                   <Form.Item
                     name="alertNotificationTitle"
                     label="预警消息标题"
-                    initialValue="【监控预警】{taskName} 发现异常"
+                    initialValue="【监控预警】{taskName} 触发预警"
                     required={hasReceivers}
                     rules={hasReceivers ? [{ required: true, message: '请填写预警消息标题' }] : []}
                   >
                     <Input
-                      placeholder="如：{taskName} 触发{severity}预警"
+                      placeholder="如：{taskName} 于 {time} 触发{severity}预警"
                       onFocus={() => setActiveInputField('alertTitle')}
                     />
                   </Form.Item>
@@ -533,7 +534,7 @@ const MonitoringTaskCreateV2: React.FC = () => {
                   <Form.Item
                     name="alertNotificationDescription"
                     label="预警消息内容"
-                    initialValue="任务 {taskName} 触发 {severity} 预警，命中 {hitCount} 条记录。"
+                    initialValue="任务 {taskName} 于 {time} 触发预警，本次命中 {hitCount} 条记录。可通过 {downloadUrl} 下载相关数据。"
                     required={hasReceivers}
                     rules={hasReceivers ? [{ required: true, message: '请输入消息内容' }] : []}
                   >
