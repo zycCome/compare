@@ -25,10 +25,8 @@ import {
   EditOutlined,
   DeleteOutlined,
   WarningOutlined,
-  CheckCircleOutlined,
   PlayCircleOutlined,
   PauseCircleOutlined,
-  ExclamationCircleOutlined,
   SendOutlined
 } from '@ant-design/icons';
 import {
@@ -127,6 +125,9 @@ const MonitoringManagement: React.FC = () => {
   const [reportSettingsVisible, setReportSettingsVisible] = useState(false);
   const [reportSettingsTab, setReportSettingsTab] = useState<'fields' | 'totals'>('fields');
   const [fieldSettings, setFieldSettings] = useState<ReportFieldSettingItem[]>([]);
+  const [testSendModalVisible, setTestSendModalVisible] = useState(false);
+  const [testSendLoading, setTestSendLoading] = useState(false);
+  const [testSendResults, setTestSendResults] = useState<AlertNotificationResult[] | null>(null);
 
   const rowTotalEnabled = true;
   const rowTotalPosition: 'top' | 'bottom' = 'bottom';
@@ -186,6 +187,7 @@ const MonitoringManagement: React.FC = () => {
   const [filterSourceReportId, setFilterSourceReportId] = useState<string | undefined>(undefined);
   const [filterSourceReportName, setFilterSourceReportName] = useState<string | undefined>(undefined);
   const [filterSchemeIds, setFilterSchemeIds] = useState<string[]>([]);
+  const [filterSeverity, setFilterSeverity] = useState<MonitorTask['severity'] | undefined>(undefined);
 
   const reportContext = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -293,16 +295,46 @@ const MonitoringManagement: React.FC = () => {
 
   const handleTestNotification = async () => {
     try {
+      // 2️⃣ 前置同步校验：接收人、通知方式、模板变量合法性
       const receivers = form.getFieldValue('notificationReceivers') || [];
       const receiverGroups = form.getFieldValue('notificationReceiverGroups') || [];
+      const channels = form.getFieldValue('notificationChannels') || [];
+      const title: string = form.getFieldValue('alertNotificationTitle') || '';
+      const description: string = form.getFieldValue('alertNotificationDescription') || '';
+
       const hasReceivers =
         (Array.isArray(receivers) && receivers.length > 0) ||
         (Array.isArray(receiverGroups) && receiverGroups.length > 0);
-      if (!hasReceivers) {
-        message.info('请先选择接收用户/接收用户组后再测试发送');
+      const hasChannels = Array.isArray(channels) && channels.length > 0;
+
+      if (!hasReceivers || !hasChannels) {
+        message.info('请先选择接收用户/接收用户组，并至少配置一种通知方式');
         return;
       }
 
+      // 模板变量合法性校验：只允许使用已定义的变量 key
+      const allowedKeys = ['taskName', 'alarmLevelName', 'hitCount', 'time', 'downloadUrl'];
+      const variablePattern = /\{([\w]+)\}/g;
+      const invalidKeys = new Set<string>();
+
+      [title, description].forEach(text => {
+        // 重置 lastIndex，确保每个文本都从头开始匹配
+        variablePattern.lastIndex = 0;
+        let match: RegExpExecArray | null;
+        while ((match = variablePattern.exec(text)) !== null) {
+          const key = match[1];
+          if (!allowedKeys.includes(key)) {
+            invalidKeys.add(key);
+          }
+        }
+      });
+
+      if (invalidKeys.size > 0) {
+        message.error(`存在无法识别的模板变量：${Array.from(invalidKeys).join('、')}`);
+        return;
+      }
+
+      // 使用表单校验，确保相关字段已填写
       await form.validateFields([
         'notificationReceivers',
         'notificationReceiverGroups',
@@ -310,9 +342,51 @@ const MonitoringManagement: React.FC = () => {
         'alertNotificationTitle',
         'alertNotificationDescription'
       ]);
-      message.success('测试通知已发送（示例，无实际推送）');
-    } catch {
-      message.error('请先完善通知设置');
+
+      // 通过前置校验后，弹出测试发送确认弹窗
+      setTestSendResults(null);
+      setTestSendModalVisible(true);
+    } catch (e) {
+      // 任意异常统一给出提示，避免用户感觉“没有反应”
+      message.error('测试发送时发生异常，请稍后重试');
+      // 控制台输出便于排查
+      // eslint-disable-next-line no-console
+      console.error(e);
+    }
+  };
+
+  const handleConfirmTestSend = async () => {
+    setTestSendLoading(true);
+    try {
+      // 这里模拟一次测试发送结果；实际接入时可替换为后端 API 调用
+      const receivers = form.getFieldValue('notificationReceivers') || [];
+      const receiverGroups = form.getFieldValue('notificationReceiverGroups') || [];
+      const channels: AlertNotificationResult['channel'][] = form.getFieldValue('notificationChannels') || [];
+
+      const targets: string[] = [];
+      if (Array.isArray(receivers)) {
+        targets.push(...receivers);
+      }
+      if (Array.isArray(receiverGroups)) {
+        targets.push(...receiverGroups);
+      }
+
+      const results: AlertNotificationResult[] = [];
+      channels.forEach((channel) => {
+        targets.forEach((target, idx) => {
+          results.push({
+            id: `${channel}-${target}-${idx}`,
+            channel,
+            target,
+            status: 'success',
+            detail: '测试发送成功（示例数据，未实际推送）'
+          });
+        });
+      });
+
+      setTestSendResults(results);
+    } finally {
+      setTestSendLoading(false);
     }
   };
 
@@ -491,20 +565,22 @@ const MonitoringManagement: React.FC = () => {
         filterStatus === 'enabled' ? t.enabled :
         filterStatus === 'disabled' ? !t.enabled :
         true;
+      const matchSeverity = filterSeverity ? t.severity === filterSeverity : true;
       const matchSourceReport = filterSourceReportId ? t.sourceReportId === filterSourceReportId : true;
       const matchScheme = filterSchemeIds.length > 0 ? filterSchemeIds.includes(t.schemeId) : true;
-      return matchName && matchStatus && matchSourceReport && matchScheme;
+      return matchName && matchStatus && matchSeverity && matchSourceReport && matchScheme;
     });
   };
 
   const filteredAllMonitorTasks = useMemo(
     () => applyTaskFilters(allMonitorTasks),
-    [allMonitorTasks, filterTaskName, filterStatus, filterSourceReportId, filterSchemeIds]
+    [allMonitorTasks, filterTaskName, filterStatus, filterSeverity, filterSourceReportId, filterSchemeIds]
   );
 
   const handleClearFilters = () => {
     setFilterTaskName('');
     setFilterStatus(undefined);
+    setFilterSeverity(undefined);
     setFilterSourceReportId(undefined);
     setFilterSourceReportName(undefined);
     setFilterSchemeIds([]);
@@ -1455,6 +1531,76 @@ const MonitoringManagement: React.FC = () => {
             </div>
           </Card>
         </Form>
+
+        {/* 测试发送确认弹窗（创建任务页使用） */}
+        <Modal
+          open={testSendModalVisible}
+          title={testSendResults ? '测试发送结果' : '测试发送确认'}
+          onCancel={() => {
+            if (testSendLoading) return;
+            setTestSendModalVisible(false);
+            setTestSendResults(null);
+          }}
+          footer={
+            testSendResults
+              ? [
+                  <Button
+                    key="close"
+                    type="primary"
+                    onClick={() => {
+                      setTestSendModalVisible(false);
+                      setTestSendResults(null);
+                    }}
+                  >
+                    关闭
+                  </Button>
+                ]
+              : [
+                  <Button
+                    key="cancel"
+                    onClick={() => {
+                      if (testSendLoading) return;
+                      setTestSendModalVisible(false);
+                    }}
+                    disabled={testSendLoading}
+                  >
+                    取消
+                  </Button>,
+                  <Button
+                    key="ok"
+                    type="primary"
+                    loading={testSendLoading}
+                    onClick={handleConfirmTestSend}
+                  >
+                    确认发送
+                  </Button>
+                ]
+          }
+          width={720}
+        >
+          <Space direction="vertical" style={{ width: '100%' }}>
+            {!testSendResults && (
+              <Text>
+                将按当前通知配置向所选接收人发送一条测试消息，是否确认？
+              </Text>
+            )}
+            {testSendLoading && (
+              <Text type="secondary">正在发送测试通知，请稍候…</Text>
+            )}
+            {testSendResults && (
+              <>
+                <Text strong style={{ marginTop: 8 }}>发送结果</Text>
+                <Table
+                  columns={notificationColumns}
+                  dataSource={testSendResults}
+                  rowKey="id"
+                  pagination={false}
+                  size="small"
+                />
+              </>
+            )}
+          </Space>
+        </Modal>
       </div>
     );
   };
@@ -1693,26 +1839,24 @@ const MonitoringManagement: React.FC = () => {
   // 预警记录表格列定义
   const alertColumns = [
     {
-      title: '严重程度',
-      dataIndex: 'severity',
-      key: 'severity',
-      render: (severity: string) => {
-        const config = {
-          low: { color: 'green', text: '低', icon: <CheckCircleOutlined /> },
-          medium: { color: 'orange', text: '中', icon: <ExclamationCircleOutlined /> },
-          high: { color: 'red', text: '高', icon: <WarningOutlined /> },
-          critical: { color: 'red', text: '紧急', icon: <WarningOutlined /> }
-        };
-        const { color, text, icon } = config[severity as keyof typeof config];
-        return (
-          <Tag color={color} icon={icon}>{text}</Tag>
-        );
-      }
-    },
-    {
       title: '监控任务',
       dataIndex: 'taskName',
       key: 'taskName'
+    },
+    {
+      title: '预警等级',
+      dataIndex: 'severity',
+      key: 'severity',
+      render: (severity: string) => {
+        const config: Record<MonitorTask['severity'], { color: string; text: string }> = {
+          low: { color: 'default', text: '提示' },
+          medium: { color: 'orange', text: '重要' },
+          high: { color: 'red', text: '严重' },
+          critical: { color: 'magenta', text: '紧急' }
+        };
+        const { color, text } = config[severity as MonitorTask['severity']] || config.low;
+        return <Tag color={color}>{text}</Tag>;
+      }
     },
     {
       title: '命中记录数',
@@ -1887,14 +2031,16 @@ const MonitoringManagement: React.FC = () => {
                 onChange={(e) => setFilterTaskName(e.target.value)}
               />
               <Select
-                placeholder="状态"
+                placeholder="预警等级"
                 allowClear
                 style={{ width: 160 }}
-                value={filterStatus}
-                onChange={(v) => setFilterStatus(v)}
+                value={filterSeverity}
+                onChange={(v) => setFilterSeverity(v as MonitorTask['severity'] | undefined)}
                 options={[
-                  { label: '运行中', value: 'enabled' },
-                  { label: '已暂停', value: 'disabled' }
+                  { label: '提示', value: 'low' },
+                  { label: '重要', value: 'medium' },
+                  { label: '严重', value: 'high' },
+                  { label: '紧急', value: 'critical' }
                 ]}
               />
               <Select
@@ -2019,6 +2165,76 @@ const MonitoringManagement: React.FC = () => {
             size="small"
           />
         )}
+      </Modal>
+
+      {/* 测试发送确认弹窗（列表视图使用） */}
+      <Modal
+        open={testSendModalVisible}
+        title={testSendResults ? '测试发送结果' : '测试发送确认'}
+        onCancel={() => {
+          if (testSendLoading) return;
+          setTestSendModalVisible(false);
+          setTestSendResults(null);
+        }}
+        footer={
+          testSendResults
+            ? [
+                <Button
+                  key="close"
+                  type="primary"
+                  onClick={() => {
+                    setTestSendModalVisible(false);
+                    setTestSendResults(null);
+                  }}
+                >
+                  关闭
+                </Button>
+              ]
+            : [
+                <Button
+                  key="cancel"
+                  onClick={() => {
+                    if (testSendLoading) return;
+                    setTestSendModalVisible(false);
+                  }}
+                  disabled={testSendLoading}
+                >
+                  取消
+                </Button>,
+                <Button
+                  key="ok"
+                  type="primary"
+                  loading={testSendLoading}
+                  onClick={handleConfirmTestSend}
+                >
+                  确认发送
+                </Button>
+              ]
+        }
+        width={720}
+      >
+        <Space direction="vertical" style={{ width: '100%' }}>
+          {!testSendResults && (
+            <Text>
+              将按当前通知配置向所选接收人发送一条测试消息（会发送给真实接收人），是否确认？
+            </Text>
+          )}
+          {testSendLoading && (
+            <Text type="secondary">正在发送测试通知，请稍候…</Text>
+          )}
+          {testSendResults && (
+            <>
+              <Text strong style={{ marginTop: 8 }}>发送结果</Text>
+              <Table
+                columns={notificationColumns}
+                dataSource={testSendResults}
+                rowKey="id"
+                pagination={false}
+                size="small"
+              />
+            </>
+          )}
+        </Space>
       </Modal>
     </div>
   );
