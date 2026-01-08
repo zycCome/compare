@@ -511,9 +511,7 @@ const MonitoringTaskCreateV2: React.FC = () => {
                     <Checkbox.Group
                       options={[
                         { label: '邮件', value: 'email' },
-                        { label: '短信', value: 'sms', disabled: true },
-                        { label: '钉钉', value: 'dingtalk' },
-                        { label: '企业微信', value: 'wechat', disabled: true }
+                        { label: '钉钉', value: 'dingtalk' }
                       ]}
                     />
                   </Form.Item>

@@ -1454,6 +1454,9 @@ const MonitoringManagement: React.FC = () => {
                 </Form.Item>
               </Col>
             </Row>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+              说明：单次通知最多支持 20 名接收用户，超过上限将无法发送。
+            </Text>
             <Form.Item
               noStyle
               shouldUpdate={(prev, cur) =>
@@ -1479,9 +1482,7 @@ const MonitoringManagement: React.FC = () => {
                       <Checkbox.Group
                         options={[
                           { label: '邮件', value: 'email' },
-                          { label: '短信', value: 'sms', disabled: true },
-                          { label: '钉钉', value: 'dingtalk' },
-                          { label: '企业微信', value: 'wechat', disabled: true }
+                          { label: '钉钉', value: 'dingtalk' }
                         ]}
                       />
                     </Form.Item>
